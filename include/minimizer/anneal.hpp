@@ -86,12 +86,12 @@ public:
 
   constexpr value_type get_optimal_value() const { return fret; }
   constexpr value_type operator()(const Point &p) { return eval_at(p); }
-
-private:
   constexpr value_type eval_at(const Point &p) {
     expr.update(Syms{}, p);
     return expr.eval();
   }
+
+private:
 
   constexpr std::tuple<value_type, Point> HotPhaseSA(Simplex s, FVals &y,
                                                      FVals &yy);

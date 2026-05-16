@@ -341,8 +341,8 @@ template <diff::Numeric T, int N, int M> struct LBFGSDirState {
 };
 
 // ── Unified quasi-Newton loop
-// ───────────────────────────────────────────────── LineSearchFn: (xc, xi, fp,
-// slope) → Point  (step dx = α·xi) DirState: .compute(g)→xi,  .update(dx,dg),
+// LineSearchFn: (xc, xi, fp, slope) → Point  (step dx = α·xi)
+// DirState: .compute(g)→xi,  .update(dx,dg),
 // .reset() iter_out is set to the number of iterations performed.
 template <diff::Numeric T, int N, typename EvalGrad, typename LineSearchFn,
           typename DirState>

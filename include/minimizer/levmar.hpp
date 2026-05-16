@@ -80,7 +80,7 @@ public:
                                         value_type ftol_ = value_type{1e-8},
                                         int itmax_ = 1000)
       : expr(std::move(e)), ftol(ftol_), itmax(itmax_) {}
-  // Fit parameters to data. Returns optimised parameter vector.
+
   constexpr ParamVec fit(ParamVec params, const std::vector<DataPoint> &data);
 
 private:
