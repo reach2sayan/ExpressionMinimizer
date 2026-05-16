@@ -72,7 +72,7 @@ if (ENABLE_MKL)
     endif ()
 else ()
     message(STATUS "MKL: disabled by user")
-    target_compile_definitions(eigen_backend INTERFACE EIGEN_NO_MKL)
+    target_compile_definitions(eigen_backend INTERFACE EIGEN_NO_MKL -Wno-maybe-uninitialized)
 endif ()
 
 # OpenMP — Eigen parallelises reductions and some decompositions when _OPENMP

@@ -72,14 +72,10 @@ public:
   constexpr Point minimize(Simplex s) {
     FVals y = Eigen::VectorXd::NullaryExpr(
         N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
-
-    FVals yy = y.unaryExpr(
-        [&, this](double v) { return v + this->bolt(temperature); });
-    auto &&[ybest, pbest] = HotPhaseSA(std::move(s), y, yy);
-
+    auto &&[ybest, pbest] = HotPhaseSA(std::move(s), y);
     s = detail::make_simplex(pbest, cold_delta);
-    std::tie(ybest, pbest) = ColdPhaseSA(s, std::move(y), std::move(yy),
-                                         std::move(pbest), std::move(ybest));
+    std::tie(ybest, pbest) =
+        ColdPhaseSA(s, std::move(y), std::move(pbest), std::move(ybest));
     fret = ybest;
     return pbest;
   }
@@ -92,15 +88,13 @@ public:
   }
 
 private:
-
-  constexpr std::tuple<value_type, Point> HotPhaseSA(Simplex s, FVals &y,
-                                                     FVals &yy);
+  constexpr std::tuple<value_type, Point> HotPhaseSA(Simplex s, FVals &y);
 
   // ── Cold Amoeba refinement from best SA point ─────────────────────────
   // Rebuild a fresh, non-degenerate simplex at pbest to avoid the
   // collapsed-simplex false-convergence that the hot phase can cause.
   constexpr std::tuple<value_type, Point>
-  ColdPhaseSA(Simplex s, FVals y, FVals yy, Point pbest, value_type ybest);
+  ColdPhaseSA(Simplex s, FVals y, Point pbest, value_type ybest);
 
   constexpr value_type amotry(Simplex &s, FVals &y, FVals &yy, Point &psum,
                               const std::size_t ihi, const value_type &fac) {
@@ -127,8 +121,10 @@ private:
 template <diff::CExpression Expr>
 constexpr std::tuple<typename SimAnneal<Expr>::value_type,
                      typename SimAnneal<Expr>::Point>
-SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y, FVals &yy) {
+SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y) {
 
+  FVals yy =
+      y.unaryExpr([&, this](double v) { return v + this->bolt(temperature); });
   Eigen::Index ib_idx;
   y.minCoeff(&ib_idx);
   std::size_t ib = static_cast<std::size_t>(ib_idx);
@@ -188,7 +184,7 @@ SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y, FVals &yy) {
 template <diff::CExpression Expr>
 constexpr std::tuple<typename SimAnneal<Expr>::value_type,
                      typename SimAnneal<Expr>::Point>
-SimAnneal<Expr>::ColdPhaseSA(Simplex s, FVals y, FVals yy, Point pbest,
+SimAnneal<Expr>::ColdPhaseSA(Simplex s, FVals y, Point pbest,
                              value_type ybest) {
 
   y.resize(N + 1);
