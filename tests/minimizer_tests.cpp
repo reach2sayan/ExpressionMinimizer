@@ -859,7 +859,7 @@ TEST(LBFGS, Quadratic3DWithArmijo) {
            + diff::Constant<double>{2.0} * y * y
            + diff::Constant<double>{3.0} * z * z;
 
-    exprmin::LBFGS<decltype(f), exprmin::LineSearch::Armijo> lbfgs{f};
+    exprmin::LBFGS<decltype(f), exprmin::Armijo> lbfgs{f};
     auto p = lbfgs.minimize({3.0, 3.0, 3.0});
 
     EXPECT_NEAR(p[0],       0.0, kTol);

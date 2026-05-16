@@ -268,49 +268,20 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
   return x;
 }
 
-// ── Shared BFGS core ─────────────────────────────────────────────────────────
-// LineSearch(xc, xi, fp, slope) → Point  (the step dx = α·xi)
-// EvalGrad(x) → std::pair<T, Eigen::Vector<T,N>>  (value, gradient)
-template <typename T, int N, typename EvalGrad, typename LineSearch>
-constexpr Eigen::Vector<T, N> bfgs_impl(EvalGrad &eval_grad,
-                                        Eigen::Vector<T, N> x, T ftol,
-                                        int itmax, LineSearch line_search) {
-  using std::abs, std::max;
+// ── Direction-computation state objects ──────────────────────────────────────
+
+// BFGS: maintains an N×N inverse-Hessian approximation H via the rank-2 update.
+template <diff::Numeric T, int N> struct BFGSDirState {
   using Point = Eigen::Vector<T, N>;
-  using Hessian = Eigen::Matrix<T, N, N>;
-  constexpr T EPS = std::numeric_limits<T>::epsilon();
+  Eigen::Matrix<T, N, N> H = Eigen::Matrix<T, N, N>::Identity();
 
-  Hessian H = Hessian::Identity();
-  auto [fp, g] = eval_grad(x);
-  Point xi = -g;
-
-  for (int it = 0; it < itmax; ++it) {
-    T slope = g.dot(xi);
-    if (slope >= T{}) {
-      H = Hessian::Identity();
-      xi = -g;
-      slope = -g.squaredNorm();
-      if (slope == T{}) {
-        break;
-      }
-    }
-
-    const Point dx = line_search(x, xi, fp, slope);
-    x += dx;
-    auto [fn, g_new] = eval_grad(x);
-
-    const T den = max(abs(fn), T{1});
-    if ((g_new.cwiseAbs().array() * x.cwiseAbs().cwiseMax(T{1}).array())
-                .maxCoeff() /
-            den <
-        ftol)
-      break;
-
-    const Point dg = g_new - g;
+  constexpr Point compute(const Point &g) const { return -(H * g); }
+  constexpr void reset() { H.setIdentity(); }
+  constexpr void update(const Point &dx, const Point &dg) {
     const Point Hdg = H * dg;
     T fac = dg.dot(dx);
     const T fae = dg.dot(Hdg);
-
+    constexpr T EPS = std::numeric_limits<T>::epsilon();
     if (fac > T{} && fac * fac > EPS * dg.squaredNorm() * dx.squaredNorm()) {
       fac = T{1} / fac;
       const T fad = T{1} / fae;
@@ -319,23 +290,107 @@ constexpr Eigen::Vector<T, N> bfgs_impl(EvalGrad &eval_grad,
       H -= fad * Hdg * Hdg.transpose();
       H += fae * u * u.transpose();
     }
+  }
+};
 
-    xi = -(H * g_new);
-    g = std::move(g_new);
+// L-BFGS: maintains a circular buffer of M most-recent (s,y) curvature pairs.
+template <diff::Numeric T, int N, int M> struct LBFGSDirState {
+  using Point = Eigen::Vector<T, N>;
+  std::array<Point, M> s_buf, y_buf;
+  std::array<T, M> rho_buf{};
+  int buf_size = 0, buf_head = 0;
+
+  // Nocedal two-loop recursion.
+  constexpr Point compute(const Point &g) const {
+    Point q = g;
+    std::array<T, M> al{};
+    for (int j = 0; j < buf_size; ++j) {
+      const int idx = (buf_head - 1 - j + M) % M;
+      al[j] = rho_buf[idx] * s_buf[idx].dot(q);
+      q -= al[j] * y_buf[idx];
+    }
+    Point r;
+    if (buf_size > 0) {
+      const int last = (buf_head - 1 + M) % M;
+      r = (s_buf[last].dot(y_buf[last]) / y_buf[last].squaredNorm()) * q;
+    } else {
+      r = q;
+    }
+    for (int j = buf_size - 1; j >= 0; --j) {
+      const int idx = (buf_head - 1 - j + M) % M;
+      r += s_buf[idx] * (al[j] - rho_buf[idx] * y_buf[idx].dot(r));
+    }
+    return -r;
+  }
+
+  constexpr void update(const Point &dx, const Point &dg) {
+    constexpr T EPS = std::numeric_limits<T>::epsilon();
+    const T ys = dg.dot(dx);
+    if (ys > EPS * dg.squaredNorm()) {
+      s_buf[buf_head] = dx;
+      y_buf[buf_head] = dg;
+      rho_buf[buf_head] = T{1} / ys;
+      buf_head = (buf_head + 1) % M;
+      if (buf_size < M)
+        ++buf_size;
+    }
+  }
+
+  constexpr void reset() {
+    buf_size = 0;
+    buf_head = 0;
+  }
+};
+
+// ── Unified quasi-Newton loop
+// ───────────────────────────────────────────────── LineSearchFn: (xc, xi, fp,
+// slope) → Point  (step dx = α·xi) DirState: .compute(g)→xi,  .update(dx,dg),
+// .reset() iter_out is set to the number of iterations performed.
+template <diff::Numeric T, int N, typename EvalGrad, typename LineSearchFn,
+          typename DirState>
+constexpr Eigen::Vector<T, N> qn_impl(EvalGrad &eg, Eigen::Vector<T, N> x,
+                                      T gtol, int itmax, LineSearchFn ls_fn,
+                                      DirState &ds, int &iter_out) {
+  using std::abs, std::max;
+  using Point = Eigen::Vector<T, N>;
+
+  auto [fp, g] = eg(x);
+
+  for (iter_out = 0; iter_out < itmax; ++iter_out) {
+    const T den = max(abs(fp), T{1});
+    if ((g.cwiseAbs().array() * x.cwiseAbs().cwiseMax(T{1}).array())
+                .maxCoeff() /
+            den <
+        gtol)
+      break;
+
+    Point xi = ds.compute(g);
+    const T slope = g.dot(xi);
+    if (slope >= T{}) {
+      ds.reset();
+      xi = -g;
+    }
+
+    const Point dx = ls_fn(x, xi, fp, g.dot(xi));
+    x += dx;
+
+    auto [fn, g_new] = eg(x);
     fp = fn;
+    ds.update(dx, g_new - g);
+    g = std::move(g_new);
   }
   return x;
 }
 
-// Backtracking Armijo line search (for non-CExpression objectives, e.g.
-// AugLag).
+// Backtracking Armijo on any eval_grad callable — used by AugLag (augmented
+// Lagrangian objective is not a CExpression so it cannot own a Brent<Expr>).
 template <diff::Numeric T, int N, typename EvalGrad>
 constexpr Eigen::Vector<T, N>
 bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
   using Point = Eigen::Vector<T, N>;
   constexpr T EPS = std::numeric_limits<T>::epsilon();
   constexpr T C1{1e-4};
-  auto ls = [&](const Point &xc, const Point &xi, T fp, T slope) {
+  auto ls_fn = [&](const Point &xc, const Point &xi, T fp, T slope) {
     T alpha{1};
     for (int k = 0; k < 40 && alpha > EPS; ++k, alpha *= T{0.5}) {
       if (eval_grad(xc + alpha * xi).first <= fp + C1 * alpha * slope) {
@@ -344,45 +399,9 @@ bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
     }
     return alpha * xi;
   };
-  return bfgs_impl<T, N>(eval_grad, std::move(x), ftol, itmax, ls);
-}
-
-// Brent exact line search (bracket + Brent 1-D minimization along direction).
-template <diff::Numeric T, int N, typename EvalGrad>
-constexpr Eigen::Vector<T, N>
-bfgs_brent(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
-  using Point = Eigen::Vector<T, N>;
-  constexpr T ZEPS = std::numeric_limits<T>::epsilon() * T{1e-3};
-  auto ls = [&](const Point &xc, const Point &xi, T /*fp*/, T /*slope*/) {
-    auto f1d = [&](T t) { return eval_grad(xc + t * xi).first; };
-    T ax{0}, bx{1}, cx, fa = f1d(ax), fb = f1d(bx), fc;
-    bracket(f1d, ax, bx, cx, fa, fb, fc);
-    const T alpha = brent(f1d, ax, bx, cx, ftol, ZEPS);
-    return alpha * xi;
-  };
-  return bfgs_impl<T, N>(eval_grad, std::move(x), ftol, itmax, ls);
-}
-
-// Dbrent derivative-aware line search (secant on f′ = ∇f · dir).
-template <diff::Numeric T, int N, typename EvalGrad>
-constexpr Eigen::Vector<T, N>
-bfgs_dbrent(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
-  using Point = Eigen::Vector<T, N>;
-  constexpr T ZEPS = std::numeric_limits<T>::epsilon() * T{1e-3};
-  auto ls = [&](const Point &xc, const Point &xi, T /*fp*/, T /*slope*/) {
-    // Funcd wraps eval_grad to expose operator() and df() for dbrent.
-    struct Funcd {
-      EvalGrad &eg;
-      const Point &xc, &xi;
-      T operator()(T t) const { return eg(xc + t * xi).first; }
-      T df(T t) const { return eg(xc + t * xi).second.dot(xi); }
-    } fc{eval_grad, xc, xi};
-    T ax{0}, bx{1}, cx, fa = fc(ax), fb = fc(bx), fc_val;
-    bracket(fc, ax, bx, cx, fa, fb, fc_val);
-    const T alpha = dbrent(fc, ax, bx, cx, ftol, ZEPS);
-    return alpha * xi;
-  };
-  return bfgs_impl<T, N>(eval_grad, std::move(x), ftol, itmax, ls);
+  BFGSDirState<T, N> ds;
+  int dummy = 0;
+  return qn_impl(eval_grad, std::move(x), ftol, itmax, ls_fn, ds, dummy);
 }
 
 } // namespace exprmin::detail

@@ -10,9 +10,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(ENABLE_NATIVE_ARCH "Build optimized for this machine" OFF)
+option(ENABLE_NATIVE_ARCH "Build optimized for this machine" ON)
+option(ENABLE_MKL "Enable Intel MKL backend for Eigen when available" ON)
 
-# ── Capability checks ──────────────────────────────────────────────────────
 include(CheckCXXCompilerFlag)
 
 # AVX2 — Eigen auto-enables AVX2/FMA vectorization when __AVX2__ is defined
@@ -40,11 +40,8 @@ else ()
     endif ()
 endif ()
 
-# ── Optional Intel MKL acceleration for Eigen ──────────────────────────────
-option(ENABLE_MKL "Enable Intel MKL backend for Eigen when available" ON)
 
 add_library(eigen_backend INTERFACE)
-
 if (ENABLE_MKL)
     # Prefer modern oneAPI (provides MKLConfig.cmake); fall back to legacy apt install.
     find_package(MKL CONFIG QUIET)
@@ -106,8 +103,6 @@ else ()
     message(STATUS "OpenMP: not found — Eigen will run single-threaded")
 endif ()
 
-# C++11 thread model — pthreads on Unix; required by std::thread and the
-# OpenMP runtime even when OpenMP::OpenMP_CXX is used.
 find_package(Threads REQUIRED)
 
 # ── ExpressionDifferentiator submodule ─────────────────────────────────────
@@ -127,16 +122,10 @@ if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/deps/expression_differentiator/CMake
 endif ()
 add_subdirectory(deps/expression_differentiator)
 
-# ── Eigen 3.4.0 + GoogleTest ───────────────────────────────────────────────
-# Disable BUILD_TESTING before pulling in deps so their include(CTest) calls
-# do not register test subdirectories in CTest.  This keeps Eigen's tests out
-# of CLion's test panel.  enable_testing() is called explicitly below for our
-# own tests after the deps are configured.
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 include(FetchContent)
-FetchContent_Declare(
-        eigen
+FetchContent_Declare(eigen
         GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
         GIT_TAG 3.4.0
         GIT_SHALLOW TRUE
@@ -145,8 +134,7 @@ set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(eigen)
 
-FetchContent_Declare(
-        googletest
+FetchContent_Declare(googletest
         URL https://github.com/google/googletest/archive/5376968f6948923e2411081fd9372e71a59d8e77.zip
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
@@ -155,38 +143,26 @@ FetchContent_MakeAvailable(googletest)
 
 set(BUILD_TESTING ON CACHE BOOL "" FORCE)
 
-# ── minimizer library (header-only) ─────────────────────────────────────────
 add_library(minimizer INTERFACE)
-
-target_include_directories(minimizer
-        INTERFACE
+target_include_directories(minimizer INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(minimizer INTERFACE diff Eigen3::Eigen eigen_backend Threads::Threads)
 if (OpenMP_CXX_FOUND)
     target_link_libraries(minimizer INTERFACE OpenMP::OpenMP_CXX)
-    # omp.h may live outside the compiler's default search path (e.g. ROCm LLVM)
     if (DEFINED _omp_include_dir AND EXISTS "${_omp_include_dir}/omp.h")
         target_include_directories(minimizer INTERFACE "${_omp_include_dir}")
     endif ()
 endif ()
 
-set_target_properties(minimizer PROPERTIES
-        CXX_STANDARD 23
-        CXX_STANDARD_REQUIRED ON
-)
+set_target_properties(minimizer PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
 
-# ── tests ──────────────────────────────────────────────────────────────────
 add_executable(minimizer_tests tests/minimizer_tests.cpp)
 target_link_libraries(minimizer_tests PRIVATE minimizer gtest_main)
-# Expose the expression_differentiator.hpp umbrella header from the submodule.
 target_include_directories(minimizer_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/deps/expression_differentiator)
-set_target_properties(minimizer_tests PROPERTIES
-        CXX_STANDARD 23
-        CXX_STANDARD_REQUIRED ON
-)
+set_target_properties(minimizer_tests PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
 
 enable_testing()
 include(GoogleTest)

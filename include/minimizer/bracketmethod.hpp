@@ -20,9 +20,7 @@ namespace mp = boost::mp11;
 template <diff::CExpression Expr> struct Bracketmethod {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
-
-  static_assert(mp::mp_size<Syms>::value == 1,
-                "Bracketmethod requires a single-variable expression");
+  static constexpr std::size_t N1D = mp::mp_size<Syms>::value;
 
   Expr expr;
   value_type ax{}, bx{}, cx{};
@@ -30,14 +28,20 @@ template <diff::CExpression Expr> struct Bracketmethod {
 
   constexpr explicit Bracketmethod(Expr e) : expr(std::move(e)) {}
 
-  constexpr value_type eval_at(value_type x) {
+  // 1D scalar evaluation — only valid for single-variable expressions.
+  constexpr value_type eval_at(value_type x)
+    requires (N1D == 1)
+  {
     std::array<value_type, 1> v{x};
     expr.update(Syms{}, v);
     return expr.eval();
   }
 
   // Step downhill from (ax0, bx0) until the minimum is bracketed.
-  constexpr void bracket(const value_type &ax0, const value_type &bx0) {
+  // Only valid for single-variable expressions.
+  constexpr void bracket(const value_type &ax0, const value_type &bx0)
+    requires (N1D == 1)
+  {
     ax = ax0;
     bx = bx0;
     fa = eval_at(ax0);
