@@ -1,5 +1,6 @@
 #pragma once
 
+#include "detail.hpp"
 #include "expressions.hpp"
 #include "gradient.hpp"
 #include "traits.hpp"
@@ -35,8 +36,6 @@ struct AugLag {
   static constexpr std::size_t NEQ = std::tuple_size_v<EqTuple>;
   static constexpr std::size_t NINEQ = std::tuple_size_v<IneqTuple>;
   using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
-  using Hessian =
-      Eigen::Matrix<value_type, static_cast<int>(N), static_cast<int>(N)>;
 
   // Birgin-Martínez magic constants
   static constexpr value_type TAU{0.5};
@@ -125,68 +124,9 @@ struct AugLag {
 
   // BFGS with backtracking Armijo on the augmented Lagrangian.
   Point inner_minimize(Point x) {
-    using std::abs, std::max;
-    constexpr auto EPS = std::numeric_limits<value_type>::epsilon();
-    constexpr value_type C1{1e-4};
-
-    Hessian H = Hessian::Identity();
-    auto [fp, g] = eval_aug(x);
-    Point xi = -g;
-
-    for (int it = 0; it < INNER_ITMAX; ++it) {
-      // If xi isn't a descent direction (corrupted H), reset to steepest
-      // descent.
-      value_type slope = g.dot(xi);
-      if (slope >= value_type{}) {
-        H = Hessian::Identity();
-        xi = -g;
-        slope = -g.squaredNorm();
-        if (slope == value_type{})
-          break;
-      }
-
-      // Backtracking Armijo line search
-      value_type alpha{1};
-      for (int ls = 0; ls < 40 && alpha > EPS; ls++, alpha *= value_type{0.5}) {
-        if (eval_aug(x + alpha * xi).first <= fp + C1 * alpha * slope)
-          break;
-      }
-      const Point dx = alpha * xi;
-      x += dx;
-
-      auto [fn, g_new] = eval_aug(x);
-
-      // Gradient-based convergence (matches BFGS in bfgs.hpp)
-      const value_type den = max(abs(fn), value_type{1});
-      if ((g_new.cwiseAbs().array() *
-           x.cwiseAbs().cwiseMax(value_type{1}).array())
-                  .maxCoeff() /
-              den <
-          ftol)
-        break;
-
-      // BFGS rank-2 inverse-Hessian update
-      const Point dg = g_new - g;
-      const Point Hdg = H * dg;
-      value_type fac = dg.dot(dx);
-      const value_type fae = dg.dot(Hdg);
-      const value_type sdg2 = dg.squaredNorm();
-      const value_type sdx2 = dx.squaredNorm();
-
-      if (fac > value_type{} && fac * fac > EPS * sdg2 * sdx2) {
-        fac = value_type{1} / fac;
-        const value_type fad = value_type{1} / fae;
-        const Point u = fac * dx - fad * Hdg;
-        H += fac * dx * dx.transpose();
-        H -= fad * Hdg * Hdg.transpose();
-        H += fae * u * u.transpose();
-      }
-
-      xi = -(H * g_new);
-      g = std::move(g_new);
-      fp = fn;
-    }
-    return x;
+    return detail::bfgs_armijo<value_type, static_cast<int>(N)>(
+        [this](const Point &p) { return eval_aug(p); }, std::move(x), ftol,
+        INNER_ITMAX);
   }
 
   // Outer Birgin-Martínez loop.
