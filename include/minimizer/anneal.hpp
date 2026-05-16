@@ -207,7 +207,8 @@ template <diff::CExpression Expr> struct SimAnneal {
 private:
   template <std::invocable<> Bolt>
   constexpr value_type amotry(Simplex &s, FVals &y, FVals &yy, Point &psum,
-                    const std::size_t ihi, Bolt &bolt, const value_type &fac) {
+                              const std::size_t ihi, Bolt &bolt,
+                              const value_type &fac) {
     const value_type fac1 = (value_type{1} - fac) / static_cast<value_type>(N);
     const value_type fac2 = fac1 - fac;
     const Point ptry = fac1 * psum - fac2 * s[ihi];
@@ -223,7 +224,8 @@ private:
   }
 
   constexpr value_type amotry_cold(Simplex &s, FVals &y, Point &psum,
-                         const std::size_t ihi, const value_type &fac) {
+                                   const std::size_t ihi,
+                                   const value_type &fac) {
     const value_type fac1 = (value_type{1} - fac) / static_cast<value_type>(N);
     const value_type fac2 = fac1 - fac;
     const Point ptry = fac1 * psum - fac2 * s[ihi];
