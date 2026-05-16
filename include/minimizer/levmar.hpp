@@ -110,7 +110,7 @@ struct LevenbergMarquardt {
       const value_type fi = expr.eval();
       r[i] = data[i].weight * (data[i].target - fi);
 
-      const auto g = diff::gradient<DiffMode::Reverse>(expr);
+      const auto g = diff::gradient<diff::DiffMode::Reverse>(expr);
       for (std::size_t j = 0; j < N; ++j) {
         J(i, static_cast<int>(j)) = -data[i].weight * g[PARAM_IDX[j]];
       }
@@ -169,7 +169,7 @@ struct LevenbergMarquardt {
 
 template <diff::CExpression Expr>
 LevenbergMarquardt(Expr) -> LevenbergMarquardt<Expr>;
-template <CExpression Expr, typename T>
+template <diff::CExpression Expr, typename T>
 LevenbergMarquardt(Expr, T) -> LevenbergMarquardt<Expr>;
 
 // Convenience alias for the common case where all symbols are parameters
