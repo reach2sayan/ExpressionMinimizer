@@ -1,6 +1,5 @@
 #pragma once
 
-#include "dlinmin.hpp"
 #include "gradient.hpp"
 #include "linmin.hpp"
 #include <Eigen/Dense>
@@ -16,8 +15,7 @@ enum class CGMethod { FletcherReeves, PolakRibiere };
 // Gradient ∇f is obtained for free via reverse-mode AD on the expression tree.
 // Line minimization is delegated to LM (default: LinMin/Brent; use DLinMin for
 // derivative-aware Dbrent line searches).
-template <diff::CExpression Expr,
-          CGMethod Method = CGMethod::PolakRibiere,
+template <diff::CExpression Expr, CGMethod Method = CGMethod::PolakRibiere,
           template <diff::CExpression> class LM = LinMin>
 struct Frprmn {
   using LMType = LM<Expr>;

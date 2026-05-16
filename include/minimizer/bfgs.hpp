@@ -1,6 +1,5 @@
 #pragma once
 
-#include "dlinmin.hpp"
 #include "gradient.hpp"
 #include "linmin.hpp"
 #include <Eigen/Dense>
@@ -23,7 +22,8 @@ struct BFGS {
   using Point = typename LMType::Point;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr std::size_t N = LMType::N;
-  using Hessian = Eigen::Matrix<value_type, static_cast<int>(N), static_cast<int>(N)>;
+  using Hessian =
+      Eigen::Matrix<value_type, static_cast<int>(N), static_cast<int>(N)>;
 
   static constexpr int ITMAX = 200;
 
@@ -36,17 +36,17 @@ struct BFGS {
                           value_type gtol_ = static_cast<value_type>(1.0e-8))
       : lm(std::move(e), gtol_), gtol(gtol_) {}
 
-  value_type eval_at(const Point &p) { return lm.eval_at(p); }
+  constexpr value_type eval_at(const Point &p) { return lm.eval_at(p); }
 
   // Returns {f(p), ∇f(p)}, updating expr state to p.
-  std::pair<value_type, Point> eval_grad(const Point &p) {
+  constexpr std::pair<value_type, Point> eval_grad(const Point &p) {
     lm.expr.update(Syms{}, p);
     const auto g_arr = diff::gradient<diff::DiffMode::Reverse>(lm.expr);
     Point g = Eigen::Map<const Point>(g_arr.data());
     return {lm.expr.eval(), std::move(g)};
   }
 
-  Point minimize(Point p) {
+  constexpr Point minimize(Point p) {
     using std::abs, std::max;
     constexpr auto EPS = std::numeric_limits<value_type>::epsilon();
 
@@ -63,13 +63,13 @@ struct BFGS {
 
       // Gradient-based convergence (NR §10.7)
       const value_type den = max(abs(fret), value_type{1});
-      const value_type test =
-          (g_new.cwiseAbs().array() *
-           p.cwiseAbs().cwiseMax(value_type{1}).array())
-              .maxCoeff() /
-          den;
-      if (test < gtol)
+      const value_type test = (g_new.cwiseAbs().array() *
+                               p.cwiseAbs().cwiseMax(value_type{1}).array())
+                                  .maxCoeff() /
+                              den;
+      if (test < gtol) {
         return p;
+      }
 
       Point dg = g_new - g;
       const Point hdg = hsn * dg;
@@ -103,7 +103,6 @@ template <diff::CExpression Expr> BFGS(Expr) -> BFGS<Expr>;
 template <diff::CExpression Expr, typename T> BFGS(Expr, T) -> BFGS<Expr>;
 
 // Derivative-aware BFGS: uses Dbrent line search via DLinMin.
-template <diff::CExpression Expr>
-using DBFGS = BFGS<Expr, DLinMin>;
+template <diff::CExpression Expr> using DBFGS = BFGS<Expr, DLinMin>;
 
 } // namespace diff::min

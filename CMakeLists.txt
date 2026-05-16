@@ -23,9 +23,20 @@ else ()
 endif ()
 
 # ── ExpressionDifferentiator submodule ─────────────────────────────────────
-# Cloned into deps/expression_differentiator via:
-#   git submodule add https://github.com/reach2sayan/ExpressionSolver.git \
-#       deps/expression_differentiator
+find_package(Git QUIET)
+if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        RESULT_VARIABLE GIT_SUBMODULE_RESULT
+    )
+    if(NOT GIT_SUBMODULE_RESULT EQUAL "0")
+        message(FATAL_ERROR "git submodule update --init --recursive failed (${GIT_SUBMODULE_RESULT})")
+    endif()
+endif()
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/deps/expression_differentiator/CMakeLists.txt")
+    message(FATAL_ERROR "deps/expression_differentiator not found — run: git submodule update --init")
+endif()
 add_subdirectory(deps/expression_differentiator)
 
 # ── Eigen 3.4.0 ────────────────────────────────────────────────────────────
@@ -84,4 +95,5 @@ set_target_properties(minimizer_tests PROPERTIES
 )
 
 enable_testing()
-add_test(NAME minimizer_tests COMMAND minimizer_tests)
+include(GoogleTest)
+gtest_discover_tests(minimizer_tests)
