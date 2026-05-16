@@ -155,7 +155,6 @@ if (OpenMP_CXX_FOUND)
         target_include_directories(minimizer INTERFACE "${_omp_include_dir}")
     endif ()
 endif ()
-
 set_target_properties(minimizer PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
 
 add_executable(minimizer_tests tests/minimizer_tests.cpp)
@@ -163,6 +162,19 @@ target_link_libraries(minimizer_tests PRIVATE minimizer gtest_main)
 target_include_directories(minimizer_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/deps/expression_differentiator)
 set_target_properties(minimizer_tests PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+
+if (MSVC)
+    target_compile_options(minimizer_tests PRIVATE /Wall)
+    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    foreach (target gtest gtest_main gmock gmock_main benchmark benchmark_main)
+        if (TARGET ${target})
+            target_compile_options(${target} PRIVATE /W0 /wd4668)
+            set_target_properties(${target} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
+        endif ()
+    endforeach ()
+else ()
+    target_compile_options(minimizer_tests PRIVATE -Wall -Wpedantic -Wfatal-errors -Wextra)
+endif ()
 
 enable_testing()
 include(GoogleTest)
