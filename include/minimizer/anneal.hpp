@@ -73,11 +73,11 @@ template <diff::CExpression Expr> struct SimAnneal {
     };
 
     // ── Hot SA phase ──────────────────────────────────────────────────────
-    FVals y, yy;
-    for (auto i : std::views::iota(0uz, N + 1)) {
-      y[i] = eval_at(s.col(i));
-      yy[i] = y[i] + bolt();
-    }
+    // FVals y, yy;
+    FVals y = Eigen::VectorXd::NullaryExpr(
+        N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
+
+    FVals yy = y.unaryExpr([&](double v) { return v + bolt(); });
 
     Eigen::Index ib_idx;
     y.minCoeff(&ib_idx);
@@ -122,8 +122,8 @@ template <diff::CExpression Expr> struct SimAnneal {
         const value_type ysave = yy[ihi];
         ytry = amotry(s, y, yy, psum, ihi, bolt, value_type{0.5});
         if (ytry >= ysave) {
-          for (std::size_t k = 0; k <= N; ++k) {
-            if (k == ilo) {
+          for (Eigen::Index k = 0; k <= static_cast<Eigen::Index>(N); ++k) {
+            if (k == static_cast<Eigen::Index>(ilo)) {
               continue;
             }
             s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
