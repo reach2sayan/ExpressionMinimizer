@@ -403,4 +403,24 @@ bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
                            std::move(line_search_fn), ds, dummy);
 }
 
+template <typename T, std::size_t N>
+constexpr T
+amotry_impl(auto &&ptr,
+            Eigen::Matrix<T, static_cast<int>(N), static_cast<int>(N + 1)> &s,
+            Eigen::Vector<T, static_cast<int>(N + 1)> &y,
+            Eigen::Vector<T, static_cast<int>(N)> &psum, const std::size_t ihi,
+            const T &fac) {
+  const T fac1 = (T{1} - fac) / static_cast<T>(N);
+  const T fac2 = fac1 - fac;
+  const Eigen::Vector<T, static_cast<int>(N)> ptry =
+      fac1 * psum - fac2 * s.col(ihi);
+  const T ytry = ptr.eval_at(ptry);
+  if (ytry < y[ihi]) {
+    psum += ptry - s.col(ihi);
+    s.col(ihi) = ptry;
+    y[ihi] = ytry;
+  }
+  return ytry;
+};
+
 } // namespace exprmin::detail
