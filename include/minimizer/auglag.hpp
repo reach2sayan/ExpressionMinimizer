@@ -100,7 +100,7 @@ public:
   }
 
   constexpr value_type get_optimal_value() const { return fret; }
-  constexpr Point minimize(Point x);   // Outer Birgin-Martínez loop.
+  constexpr Point minimize(Point x); // Outer Birgin-Martínez loop.
 
 private:
   constexpr value_type eval_obj(const Point &x) {

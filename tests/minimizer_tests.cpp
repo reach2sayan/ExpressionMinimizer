@@ -16,8 +16,7 @@ static constexpr double kTol = 1e-5;
 TEST(Bracketmethod, QuadraticBrackets) {
   // f(x) = (x - 3)^2  — minimum at x = 3
   auto x = diff::Variable<double, 'x'>{0.0};
-  auto f =
-      (x - diff::Constant<double>{3.0}) * (x - diff::Constant<double>{3.0});
+  auto f = (x - 3.0) * (x - 3.0);
 
   exprmin::Bracketmethod bm{f};
   bm.bracket(0.0, 1.0);
@@ -51,8 +50,7 @@ TEST(Bracketmethod, SingleCycleConverges) {
 TEST(Golden, QuadraticMinimum) {
   // f(x) = (x - 2)^2  =>  xmin = 2, fmin = 0
   auto x = diff::Variable<double, 'x'>{0.0};
-  auto f =
-      (x - diff::Constant<double>{2.0}) * (x - diff::Constant<double>{2.0});
+  auto f = (x - 2.0) * (x - 2.0);
 
   exprmin::Golden golden{f};
   double xmin = golden.minimize(0.0, 5.0);
@@ -110,8 +108,7 @@ TEST(Golden, CustomTolerance) {
 TEST(Golden, ManualBracketThenMinimize) {
   // Set bracket manually, then call minimize() without ax0/bx0
   auto x = diff::Variable<double, 'x'>{0.0};
-  auto f =
-      (x - diff::Constant<double>{4.0}) * (x - diff::Constant<double>{4.0});
+  auto f = (x - 4.0) * (x - 4.0);
 
   exprmin::Golden g{f};
   g.bracket(2.0, 3.0);        // bracket first
@@ -240,7 +237,7 @@ TEST(Powell, Bowl2D) {
 
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 2.0, kTol);
-  EXPECT_NEAR(pw.fret, 0.0, kTol * kTol);
+  EXPECT_NEAR(pw.get_optimal_value(), 0.0, kTol * kTol);
 }
 
 TEST(Powell, Rosenbrock) {
@@ -249,14 +246,14 @@ TEST(Powell, Rosenbrock) {
   auto y = diff::Variable<double, 'y'>{0.0};
   auto t1 = diff::Constant<double>{1.0} - x;
   auto t2 = y - x * x;
-  auto f = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
+  auto f = t1 * t1 + 100.0 * t2 * t2;
 
   exprmin::Powell pw{f, 1e-10};
   auto p = pw.minimize({-1.0, 1.0});
 
   EXPECT_NEAR(p[0], 1.0, 1e-4);
   EXPECT_NEAR(p[1], 1.0, 1e-4);
-  EXPECT_NEAR(pw.fret, 0.0, 1e-6);
+  EXPECT_NEAR(pw.get_optimal_value(), 0.0, 1e-6);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -387,30 +384,30 @@ TEST(Amoeba, Bowl2D) {
 
   EXPECT_NEAR(p[0], 1.0, 1e-4);
   EXPECT_NEAR(p[1], 2.0, 1e-4);
-  EXPECT_NEAR(am.fret, 0.0, 1e-6);
+  EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-6);
 }
 
 TEST(Amoeba, Rosenbrock) {
   auto x = diff::Variable<double, 'x'>{0.0};
   auto y = diff::Variable<double, 'y'>{0.0};
-  auto t1 = diff::Constant<double>{1.0} - x;
+  auto t1 = 1.0 - x;
   auto t2 = y - x * x;
-  auto f = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
+  auto f = t1 * t1 + 100 * t2 * t2;
 
   exprmin::Amoeba am{f, 1e-8};
   auto p = am.minimize({-1.0, 1.0}, 0.5);
 
   EXPECT_NEAR(p[0], 1.0, 1e-3);
   EXPECT_NEAR(p[1], 1.0, 1e-3);
-  EXPECT_NEAR(am.fret, 0.0, 1e-4);
+  EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-4);
 }
 
 TEST(Amoeba, Quadratic3D) {
   auto x = diff::Variable<double, 'x'>{0.0};
   auto y = diff::Variable<double, 'y'>{0.0};
   auto z = diff::Variable<double, 'z'>{0.0};
-  auto f = x * x + diff::Constant<double>{2.0} * y * y +
-           diff::Constant<double>{3.0} * z * z;
+  auto f = x * x + 2* y * y +
+          3 * z * z;
 
   exprmin::Amoeba am{f};
   auto p = am.minimize({3.0, 3.0, 3.0}, 1.0);
@@ -418,7 +415,7 @@ TEST(Amoeba, Quadratic3D) {
   EXPECT_NEAR(p[0], 0.0, 1e-4);
   EXPECT_NEAR(p[1], 0.0, 1e-4);
   EXPECT_NEAR(p[2], 0.0, 1e-4);
-  EXPECT_NEAR(am.fret, 0.0, 1e-6);
+  EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-6);
 }
 
 // ─────────────────────────────────────────────────────────────

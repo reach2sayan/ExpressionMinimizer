@@ -20,70 +20,72 @@ template <diff::CExpression Expr> struct Powell {
 
   static constexpr diff::Constant<value_type> FTINY{1.0e-25};
   static constexpr int ITMAX = 200;
-
+private:
   LinMin<Expr> lm;
   value_type fret{};
   int iter{};
   const value_type ftol;
 
+public:
   constexpr explicit Powell(Expr e,
                             value_type ftol_ = static_cast<value_type>(3.0e-8))
       : lm(std::move(e), ftol_), ftol(ftol_) {}
 
+  constexpr value_type operator()(const Point &p) { return lm.eval_at(p); }
   constexpr value_type eval_at(const Point &p) { return lm.eval_at(p); }
-
-  // Minimize from p using coordinate-axis initial directions.
   constexpr Point minimize(Point p) {
     return minimize(std::move(p), Dirs::Identity());
   }
+  constexpr Point minimize(Point p, Dirs xi);
+  constexpr value_type get_optimal_value() const { return fret; }
+};
 
-  // Minimize from p with explicit initial direction set xi (columns =
-  // directions).
-  constexpr Point minimize(Point p, Dirs xi) {
-    using std::abs;
-    fret = eval_at(p);
-    Point pt = p;
+template <diff::CExpression Expr>
+constexpr typename Powell<Expr>::Point Powell<Expr>::minimize(Point p,
+                                                              Dirs xi) {
+  using std::abs;
+  fret = eval_at(p);
+  Point pt = p;
 
-    for (iter = 0; iter < ITMAX; ++iter) {
-      const value_type fp = fret;
-      int ibig = 0;
-      value_type del{};
+  for (iter = 0; iter < ITMAX; ++iter) {
+    const value_type fp = fret;
+    int ibig = 0;
+    value_type del{};
 
-      for (int i = 0; i < static_cast<int>(N); ++i) {
-        const value_type fptt = fret;
-        lm.minimize(p, xi.col(i));
-        fret = lm.get_optimal_value();
-        if (abs(fptt - fret) > del) {
-          del = abs(fptt - fret);
-          ibig = i;
-        }
-      }
-
-      if (value_type{2} * abs(fp - fret) <=
-          ftol * (abs(fp) + abs(fret)) + FTINY.get()) {
-        return p;
-      }
-
-      const Point ptt = value_type{2} * p - pt;
-      Point xit = p - pt;
-      pt = p;
-
-      const value_type fptt = eval_at(ptt);
-      if (fptt < fp) {
-        const value_type a = fp - fret - del;
-        const value_type b = fp - fptt;
-        if (value_type{2} * (fp - value_type{2} * fret + fptt) * a * a <
-            b * b * del) {
-          lm.minimize(p, xit);
-          fret = lm.get_optimal_value();
-          xi.col(ibig) = xi.col(static_cast<int>(N) - 1);
-          xi.col(static_cast<int>(N) - 1) = xit;
-        }
+    for (int i = 0; i < static_cast<int>(N); ++i) {
+      const value_type fptt = fret;
+      lm.minimize(p, xi.col(i));
+      fret = lm.get_optimal_value();
+      if (abs(fptt - fret) > del) {
+        del = abs(fptt - fret);
+        ibig = i;
       }
     }
-    return p;
+
+    if (value_type{2} * abs(fp - fret) <=
+        ftol * (abs(fp) + abs(fret)) + FTINY.get()) {
+      return p;
+    }
+
+    const Point ptt = value_type{2} * p - pt;
+    Point xit = p - pt;
+    pt = p;
+
+    const value_type fptt = eval_at(ptt);
+    if (fptt < fp) {
+      const value_type a = fp - fret - del;
+      const value_type b = fp - fptt;
+      if (value_type{2} * (fp - value_type{2} * fret + fptt) * a * a <
+          b * b * del) {
+        lm.minimize(p, xit);
+        fret = lm.get_optimal_value();
+        xi.col(ibig) = xi.col(static_cast<int>(N) - 1);
+        xi.col(static_cast<int>(N) - 1) = xit;
+      }
+    }
   }
-};
+  return p;
+}
 
 template <diff::CExpression Expr> Powell(Expr) -> Powell<Expr>;
 template <diff::CExpression Expr, typename T> Powell(Expr, T) -> Powell<Expr>;

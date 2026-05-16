@@ -27,7 +27,7 @@ template <diff::CExpression Expr> struct Armijo {
 
   constexpr explicit Armijo(Expr e,
                             value_type tol_ = static_cast<value_type>(1e-8))
-      : expr(std::move(e)), tol(tol_) {}
+      : expr{std::move(e)}, tol{tol_} {}
 
   constexpr value_type eval_at(const Point &p) {
     expr.update(Syms{}, p);
@@ -41,18 +41,15 @@ template <diff::CExpression Expr> struct Armijo {
     constexpr value_type C1{1e-4};
     value_type alpha{1};
     for (int k = 0; k < 40 && alpha > EPS; ++k, alpha *= value_type{0.5})
-      if (f1d(alpha) <= fp + C1 * alpha * slope)
+      if (f1d(alpha) <= fp + C1 * alpha * slope) {
         break;
+      }
     return alpha;
   }
 };
 template <diff::CExpression Expr> Armijo(Expr) -> Armijo<Expr>;
 template <diff::CExpression Expr, typename T> Armijo(Expr, T) -> Armijo<Expr>;
 
-// ── QuasiNewtonBase<Expr, LS1D>
-// ─────────────────────────────────────────────── Shared base for BFGS and
-// LBFGS: owns LS1D<Expr> ls, provides eval_at / eval_grad through ls.expr, and
-// builds the N-D line search callable.
 template <diff::CExpression Expr, template <diff::CExpression> class LS1D>
 struct QuasiNewtonBase {
   using value_type = typename Expr::value_type;
@@ -82,37 +79,7 @@ public:
   // Returns a line search callable (xc, xi, fp, slope) → dx for
   // quasi_newton_impl. Dispatches to the owned ls.minimize_fn; Armijo needs
   // fp/slope, Brent/Dbrent do bracket + 1D minimization.
-  constexpr auto make_line_search_fn() {
-    return [this](const Point &xc, const Point &xi, value_type fp,
-                  value_type slope) -> Point {
-      auto f1d = [this, &xc, &xi](value_type t) {
-        ls.expr.update(Syms{}, xc + t * xi);
-        return ls.expr.eval();
-      };
-      value_type t_min;
-      if constexpr (std::is_same_v<LS1D<Expr>, Armijo<Expr>>) {
-        t_min = ls.minimize_fn(f1d, fp, slope);
-      } else if constexpr (std::is_same_v<LS1D<Expr>, Dbrent<Expr>>) {
-        struct FC {
-          decltype(f1d) &f_;
-          const Point &xi_;
-          LS1D<Expr> &ls_;
-          const Point &xc_;
-          value_type operator()(value_type t) { return f_(t); }
-          value_type df(value_type t) {
-            ls_.expr.update(Syms{}, xc_ + t * xi_);
-            const auto g = diff::gradient<diff::DiffMode::Reverse>(ls_.expr);
-            return Eigen::Map<const Point>(g.data()).dot(xi_);
-          }
-        } fc{f1d, xi, ls, xc};
-        t_min = ls.minimize_fn(fc, value_type{0}, value_type{1});
-      } else {
-        // Brent (default)
-        t_min = ls.minimize_fn(f1d, value_type{0}, value_type{1});
-      }
-      return t_min * xi;
-    };
-  }
+  constexpr auto make_line_search_fn();
 };
 
 // ── BFGS<Expr, LS1D> ─────────────────────────────────────────────────────────
@@ -140,6 +107,39 @@ struct BFGS : QuasiNewtonBase<Expr, LS1D> {
     return p;
   }
 };
+
+template <diff::CExpression Expr, template <diff::CExpression> class LS1D>
+constexpr auto QuasiNewtonBase<Expr, LS1D>::make_line_search_fn() {
+  return [this](const Point &xc, const Point &xi, value_type fp,
+                value_type slope) -> Point {
+    auto f1d = [this, &xc, &xi](value_type t) {
+      ls.expr.update(Syms{}, xc + t * xi);
+      return ls.expr.eval();
+    };
+    value_type t_min;
+    if constexpr (std::is_same_v<LS1D<Expr>, Armijo<Expr>>) {
+      t_min = ls.minimize_fn(f1d, fp, slope);
+    } else if constexpr (std::is_same_v<LS1D<Expr>, Dbrent<Expr>>) {
+      struct FC {
+        decltype(f1d) &f_;
+        const Point &xi_;
+        LS1D<Expr> &ls_;
+        const Point &xc_;
+        value_type operator()(value_type t) { return f_(t); }
+        value_type df(value_type t) {
+          ls_.expr.update(Syms{}, xc_ + t * xi_);
+          const auto g = diff::gradient<diff::DiffMode::Reverse>(ls_.expr);
+          return Eigen::Map<const Point>(g.data()).dot(xi_);
+        }
+      } fc{f1d, xi, ls, xc};
+      t_min = ls.minimize_fn(fc, value_type{0}, value_type{1});
+    } else {
+      // Brent (default)
+      t_min = ls.minimize_fn(f1d, value_type{0}, value_type{1});
+    }
+    return t_min * xi;
+  };
+}
 
 template <diff::CExpression Expr> BFGS(Expr) -> BFGS<Expr>;
 template <diff::CExpression Expr, typename T> BFGS(Expr, T) -> BFGS<Expr>;
