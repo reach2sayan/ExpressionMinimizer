@@ -76,6 +76,13 @@ struct AugLag {
   int iter{};
   const value_type ftol;
 
+  constexpr explicit AugLag(Obj o, auto eq_ = {},
+                            auto ineq_ = {},
+                            value_type ftol_ = value_type{1e-8},
+                            value_type rho0 = value_type{1}) :
+  AugLag(std::move(o), EqConstraints{std::move(eq_)},
+         IneqConstraints{std::move(ineq_)}, ftol_, rho0) {}
+
   constexpr explicit AugLag(Obj o, EqConstraints eq_ = {},
                             IneqConstraints ineq_ = {},
                             value_type ftol_ = value_type{1e-8},

@@ -268,8 +268,6 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
   return x;
 }
 
-// ── Direction-computation state objects ──────────────────────────────────────
-
 // BFGS: maintains an N×N inverse-Hessian approximation H via the rank-2 update.
 template <diff::Numeric T, int N> struct BFGSDirState {
   using Point = Eigen::Vector<T, N>;
@@ -348,9 +346,9 @@ template <diff::Numeric T, int N, int M> struct LBFGSDirState {
 // .reset() iter_out is set to the number of iterations performed.
 template <diff::Numeric T, int N, typename EvalGrad, typename LineSearchFn,
           typename DirState>
-constexpr Eigen::Vector<T, N> qn_impl(EvalGrad &eg, Eigen::Vector<T, N> x,
-                                      T gtol, int itmax, LineSearchFn ls_fn,
-                                      DirState &ds, int &iter_out) {
+constexpr Eigen::Vector<T, N>
+quasi_newton_impl(EvalGrad &eg, Eigen::Vector<T, N> x, T gtol, int itmax,
+                  LineSearchFn ls_fn, DirState &ds, int &iter_out) {
   using std::abs, std::max;
   using Point = Eigen::Vector<T, N>;
 
@@ -358,11 +356,11 @@ constexpr Eigen::Vector<T, N> qn_impl(EvalGrad &eg, Eigen::Vector<T, N> x,
 
   for (iter_out = 0; iter_out < itmax; ++iter_out) {
     const T den = max(abs(fp), T{1});
-    if ((g.cwiseAbs().array() * x.cwiseAbs().cwiseMax(T{1}).array())
-                .maxCoeff() /
-            den <
-        gtol)
+    const T scaled_grad_inf_norm =
+        (g.cwiseAbs().array() * x.cwiseAbs().cwiseMax(T{1}).array()).maxCoeff();
+    if (scaled_grad_inf_norm / den < gtol) {
       break;
+    }
 
     Point xi = ds.compute(g);
     const T slope = g.dot(xi);
@@ -390,7 +388,7 @@ bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
   using Point = Eigen::Vector<T, N>;
   constexpr T EPS = std::numeric_limits<T>::epsilon();
   constexpr T C1{1e-4};
-  auto ls_fn = [&](const Point &xc, const Point &xi, T fp, T slope) {
+  auto line_search_fn = [&](const Point &xc, const Point &xi, T fp, T slope) {
     T alpha{1};
     for (int k = 0; k < 40 && alpha > EPS; ++k, alpha *= T{0.5}) {
       if (eval_grad(xc + alpha * xi).first <= fp + C1 * alpha * slope) {
@@ -401,7 +399,8 @@ bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
   };
   BFGSDirState<T, N> ds;
   int dummy = 0;
-  return qn_impl(eval_grad, std::move(x), ftol, itmax, ls_fn, ds, dummy);
+  return quasi_newton_impl(eval_grad, std::move(x), ftol, itmax,
+                           std::move(line_search_fn), ds, dummy);
 }
 
 } // namespace exprmin::detail
