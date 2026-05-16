@@ -50,7 +50,9 @@ struct Frprmn {
   constexpr Point minimize(Point p) {
     using std::abs;
 
-    auto [fp, g] = eval_grad(p);
+    auto fg0 = eval_grad(p);
+    value_type fp = fg0.first;
+    Point g = std::move(fg0.second);
     fret = fp;
 
     Point xi = -g;
@@ -66,7 +68,7 @@ struct Frprmn {
       }
 
       fp = fret;
-      auto [_, g_new] = eval_grad(p);
+      Point g_new = eval_grad(p).second;
 
       const value_type gg = g.squaredNorm();
       const value_type dgg = [&] {
