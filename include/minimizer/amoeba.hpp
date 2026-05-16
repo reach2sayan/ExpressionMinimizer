@@ -46,7 +46,7 @@ private:
 public:
   constexpr explicit Amoeba(Expr e,
                             value_type ftol_ = static_cast<value_type>(3.0e-8))
-      : expr(std::move(e)), ftol(ftol_) {}
+      : expr{std::move(e)}, ftol{ftol_} {}
 
   constexpr value_type eval_at(const Point &p) {
     expr.update(Syms{}, p);
@@ -58,31 +58,16 @@ public:
     return minimize(detail::make_simplex(p, delta));
   }
   constexpr Point minimize(Simplex s);
-
-private:
-  constexpr value_type amotry(Simplex &s, FVals &y, Point &psum,
-                              const std::size_t ihi, const value_type &fac) {
-    const value_type fac1 = (value_type{1} - fac) / static_cast<value_type>(N);
-    const value_type fac2 = fac1 - fac;
-    const Point ptry = fac1 * psum - fac2 * s.col(ihi);
-    const value_type ytry = eval_at(ptry);
-    if (ytry < y[ihi]) {
-      psum += ptry - s.col(ihi);
-      s.col(ihi) = ptry;
-      y[ihi] = ytry;
-    }
-    return ytry;
-  }
 };
 
 template <diff::CExpression Expr>
 constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
   FVals y;
-  for (auto i : std::views::iota(0uz, N + 1))
+  for (auto i : std::views::iota(0uz, N + 1)) {
     y[i] = eval_at(s.col(i));
+  }
 
   Point psum = s.rowwise().sum();
-
   for (iter = 0; iter < ITMAX; ++iter) {
     // Indices of best (ilo), worst (ihi), second-worst (inhi)
     Eigen::Index ilo_idx;
@@ -108,12 +93,14 @@ constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
       return s.col(ilo);
     }
 
-    value_type ytry = amotry(s, y, psum, ihi, value_type{-1});
+    value_type ytry = detail::amotry_impl<value_type, N>(*this, s, y, psum, ihi,
+                                                         value_type{-1});
     if (ytry <= y[ilo]) {
-      amotry(s, y, psum, ihi, value_type{2});
+      detail::amotry_impl<value_type, N>(*this, s, y, psum, ihi, value_type{2});
     } else if (ytry >= y[inhi]) {
       const value_type ysave = y[ihi];
-      ytry = amotry(s, y, psum, ihi, value_type{0.5});
+      ytry = detail::amotry_impl<value_type, N>(*this, s, y, psum, ihi,
+                                                value_type{0.5});
       if (ytry >= ysave) {
         // Contraction failed — shrink whole simplex toward best
         for (auto i : std::views::iota(0uz, N + 1)) {

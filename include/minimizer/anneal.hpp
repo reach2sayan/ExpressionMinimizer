@@ -121,16 +121,7 @@ private:
   constexpr value_type amotry_cold(Simplex &s, FVals &y, Point &psum,
                                    const std::size_t ihi,
                                    const value_type &fac) {
-    const value_type fac1 = (value_type{1} - fac) / static_cast<value_type>(N);
-    const value_type fac2 = fac1 - fac;
-    const Point ptry = fac1 * psum - fac2 * s.col(ihi);
-    const value_type ytry = eval_at(ptry);
-    if (ytry < y[ihi]) {
-      psum += ptry - s.col(ihi);
-      s.col(ihi) = ptry;
-      y[ihi] = ytry;
-    }
-    return ytry;
+    return detail::amotry_impl<value_type, N>(*this, s, y, psum, ihi, fac);
   }
 };
 template <diff::CExpression Expr>
