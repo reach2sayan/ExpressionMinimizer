@@ -24,18 +24,21 @@ template <diff::CExpression Expr> struct LinMin {
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
   using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
 
+private:
   static constexpr int ITMAX = 100;
 
   Brent<Expr> ls;
   value_type fret{};
   const value_type tol;
 
+public:
   constexpr explicit LinMin(Expr e,
                             value_type tol_ = static_cast<value_type>(3.0e-8))
       : ls(std::move(e), tol_), tol(tol_) {}
 
+  constexpr value_type operator()(const Point &p) { return ls.eval_at(p); }
   constexpr value_type eval_at(const Point &p) { return ls.eval_at(p); }
-
+  constexpr value_type get_optimal_value() const { return fret; }
   constexpr std::pair<value_type, Point> eval_grad(const Point &p) {
     ls.expr.update(Syms{}, p);
     const auto g_arr = diff::gradient<diff::DiffMode::Reverse>(ls.expr);
@@ -66,16 +69,18 @@ template <diff::CExpression Expr> struct DLinMin {
 
   static constexpr int ITMAX = 100;
 
+private:
   Dbrent<Expr> ls;
   value_type fret{};
   const value_type tol;
 
+public:
   constexpr explicit DLinMin(Expr e,
                              value_type tol_ = static_cast<value_type>(3.0e-8))
       : ls(std::move(e), tol_), tol(tol_) {}
 
   constexpr value_type eval_at(const Point &p) { return ls.eval_at(p); }
-
+  constexpr value_type get_optimal_value() const { return fret; }
   constexpr std::pair<value_type, Point> eval_grad(const Point &p) {
     ls.expr.update(Syms{}, p);
     const auto g_arr = diff::gradient<diff::DiffMode::Reverse>(ls.expr);

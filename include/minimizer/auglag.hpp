@@ -64,6 +64,7 @@ struct AugLag {
   static constexpr int INNER_ITMAX = 200;
   static constexpr int OUTER_ITMAX = 100;
 
+private:
   Obj obj;
   EqConstraints eq;
   IneqConstraints ineq;
@@ -76,12 +77,13 @@ struct AugLag {
   int iter{};
   const value_type ftol;
 
-  constexpr explicit AugLag(Obj o, auto eq_ = {},
-                            auto ineq_ = {},
+public:
+  constexpr explicit AugLag(Obj o, auto &&eq_ = {}, auto &&ineq_ = {},
                             value_type ftol_ = value_type{1e-8},
-                            value_type rho0 = value_type{1}) :
-  AugLag(std::move(o), EqConstraints{std::move(eq_)},
-         IneqConstraints{std::move(ineq_)}, ftol_, rho0) {}
+                            value_type rho0 = value_type{1})
+      : AugLag(std::move(o), EqConstraints{std::forward<decltype(eq_)>(eq_)},
+               IneqConstraints{std::forward<decltype(ineq_)>(ineq_)},
+               std::move(ftol_), std::move(rho0)) {}
 
   constexpr explicit AugLag(Obj o, EqConstraints eq_ = {},
                             IneqConstraints ineq_ = {},
@@ -97,48 +99,17 @@ struct AugLag {
     }
   }
 
+  constexpr value_type get_optimal_value() const { return fret; }
+  constexpr Point minimize(Point x);   // Outer Birgin-Martínez loop.
+
+private:
   constexpr value_type eval_obj(const Point &x) {
     obj.update(Syms{}, x);
     return obj.eval();
   }
 
   // Assemble L(x) and ∇L(x) via reverse-mode AD on each expression.
-  constexpr std::pair<value_type, Point> eval_aug(const Point &x) {
-    obj.update(Syms{}, x);
-    value_type L = obj.eval();
-    const auto g0 = diff::gradient<diff::DiffMode::Reverse>(obj);
-    Point g = Eigen::Map<const Point>(g0.data());
-
-    if constexpr (NEQ > 0) {
-      int ii = 0;
-      eq.for_each_expr([&](auto &c) {
-        c.update(Syms{}, x);
-        const value_type h = c.eval() + lambda[ii] / rho;
-        const auto hg0 = diff::gradient<diff::DiffMode::Reverse>(c);
-        const Point hg = Eigen::Map<const Point>(hg0.data());
-        L += value_type{0.5} * rho * h * h;
-        g += rho * h * hg;
-        ++ii;
-      });
-    }
-
-    if constexpr (NINEQ > 0) {
-      int ii = 0;
-      ineq.for_each_expr([&](auto &c) {
-        c.update(Syms{}, x);
-        const value_type f = c.eval() + mu[ii] / rho;
-        if (f > value_type{}) {
-          const auto fg0 = diff::gradient<diff::DiffMode::Reverse>(c);
-          const Point fg = Eigen::Map<const Point>(fg0.data());
-          L += value_type{0.5} * rho * f * f;
-          g += rho * f * fg;
-        }
-        ++ii;
-      });
-    }
-
-    return {L, g};
-  }
+  constexpr std::pair<value_type, Point> eval_aug(const Point &x);
 
   // BFGS with backtracking Armijo on the augmented Lagrangian.
   constexpr Point inner_minimize(Point x) {
@@ -146,83 +117,127 @@ struct AugLag {
         [this](const Point &p) { return eval_aug(p); }, std::move(x), ftol,
         INNER_ITMAX);
   }
-
-  // Outer Birgin-Martínez loop.
-  constexpr Point minimize(Point x) {
-    using std::abs, std::max;
-
-    // Estimate initial ρ from constraint violation at x₀ (B&M §3.2)
-    if constexpr (NEQ > 0 || NINEQ > 0) {
-      obj.update(Syms{}, x);
-      const value_type fcur = obj.eval();
-      value_type con2{};
-
-      if constexpr (NEQ > 0) {
-        eq.for_each_expr([&](auto &c) {
-          c.update(Syms{}, x);
-          const value_type h = c.eval();
-          con2 += h * h;
-        });
-      }
-
-      if constexpr (NINEQ > 0) {
-        ineq.for_each_expr([&](auto &c) {
-          c.update(Syms{}, x);
-          const value_type f = c.eval();
-          if (f > value_type{})
-            con2 += f * f;
-        });
-      }
-
-      if (con2 > value_type{}) {
-        rho = std::clamp(value_type{2} * abs(fcur) / con2, value_type{1e-6},
-                         value_type{10});
-      }
-    }
-
-    value_type ICM = std::numeric_limits<value_type>::max();
-    for (iter = 0; iter < OUTER_ITMAX; ++iter) {
-      const value_type prev_ICM = ICM;
-
-      x = inner_minimize(x);
-      ICM = value_type{};
-
-      // Update equality multipliers
-      if constexpr (NEQ > 0) {
-        int ii = 0;
-        eq.for_each_expr([&](auto &c) {
-          c.update(Syms{}, x);
-          const value_type h = c.eval();
-          ICM = max(ICM, abs(h));
-          lambda[ii] = std::clamp(lambda[ii] + rho * h, LAM_MIN, LAM_MAX);
-          ++ii;
-        });
-      }
-
-      // Update inequality multipliers
-      if constexpr (NINEQ > 0) {
-        int ii = 0;
-        ineq.for_each_expr([&](auto &c) {
-          c.update(Syms{}, x);
-          const value_type f = c.eval();
-          ICM = max(ICM, abs(max(f, -mu[ii] / rho)));
-          mu[ii] = std::clamp(mu[ii] + rho * f, value_type{}, MU_MAX);
-          ++ii;
-        });
-      }
-
-      if (ICM > TAU * prev_ICM) {
-        rho *= GAM;
-      }
-      if (ICM <= ftol) {
-        break;
-      }
-    }
-
-    fret = eval_obj(x);
-    return x;
-  }
 };
+
+template <diff::CExpression Obj, typename EqConstraints,
+          typename IneqConstraints>
+constexpr std::pair<
+    typename AugLag<Obj, EqConstraints, IneqConstraints>::value_type,
+    typename AugLag<Obj, EqConstraints, IneqConstraints>::Point>
+AugLag<Obj, EqConstraints, IneqConstraints>::eval_aug(const Point &x) {
+  obj.update(Syms{}, x);
+  value_type L = obj.eval();
+  const auto g0 = diff::gradient<diff::DiffMode::Reverse>(obj);
+  Point g = Eigen::Map<const Point>(g0.data());
+
+  if constexpr (NEQ > 0) {
+    int ii = 0;
+    eq.for_each_expr([&](auto &c) {
+      c.update(Syms{}, x);
+      const value_type h = c.eval() + lambda[ii] / rho;
+      const auto hg0 = diff::gradient<diff::DiffMode::Reverse>(c);
+      const Point hg = Eigen::Map<const Point>(hg0.data());
+      L += value_type{0.5} * rho * h * h;
+      g += rho * h * hg;
+      ++ii;
+    });
+  }
+
+  if constexpr (NINEQ > 0) {
+    int ii = 0;
+    ineq.for_each_expr([&](auto &c) {
+      c.update(Syms{}, x);
+      const value_type f = c.eval() + mu[ii] / rho;
+      if (f > value_type{}) {
+        const auto fg0 = diff::gradient<diff::DiffMode::Reverse>(c);
+        const Point fg = Eigen::Map<const Point>(fg0.data());
+        L += value_type{0.5} * rho * f * f;
+        g += rho * f * fg;
+      }
+      ++ii;
+    });
+  }
+
+  return {L, g};
+}
+
+template <diff::CExpression Obj, typename EqConstraints,
+          typename IneqConstraints>
+constexpr typename AugLag<Obj, EqConstraints, IneqConstraints>::Point
+AugLag<Obj, EqConstraints, IneqConstraints>::minimize(Point x) {
+  using std::abs, std::max;
+
+  // Estimate initial ρ from constraint violation at x₀ (B&M §3.2)
+  if constexpr (NEQ > 0 || NINEQ > 0) {
+    obj.update(Syms{}, x);
+    const value_type fcur = obj.eval();
+    value_type con2{};
+
+    if constexpr (NEQ > 0) {
+      eq.for_each_expr([&](auto &c) {
+        c.update(Syms{}, x);
+        const value_type h = c.eval();
+        con2 += h * h;
+      });
+    }
+
+    if constexpr (NINEQ > 0) {
+      ineq.for_each_expr([&](auto &c) {
+        c.update(Syms{}, x);
+        const value_type f = c.eval();
+        if (f > value_type{})
+          con2 += f * f;
+      });
+    }
+
+    if (con2 > value_type{}) {
+      rho = std::clamp(value_type{2} * abs(fcur) / con2, value_type{1e-6},
+                       value_type{10});
+    }
+  }
+
+  value_type ICM = std::numeric_limits<value_type>::max();
+  for (iter = 0; iter < OUTER_ITMAX; ++iter) {
+    const value_type prev_ICM = ICM;
+
+    x = inner_minimize(x);
+    ICM = value_type{};
+
+    // Update equality multipliers
+    if constexpr (NEQ > 0) {
+      int ii = 0;
+      eq.for_each_expr([&](auto &c) {
+        c.update(Syms{}, x);
+        const value_type h = c.eval();
+        ICM = max(ICM, abs(h));
+        lambda[ii] = std::clamp(lambda[ii] + rho * h, LAM_MIN, LAM_MAX);
+        ++ii;
+      });
+    }
+
+    // Update inequality multipliers
+    if constexpr (NINEQ > 0) {
+      int ii = 0;
+      ineq.for_each_expr([&](auto &c) {
+        c.update(Syms{}, x);
+        const value_type f = c.eval();
+        ICM = max(ICM, abs(max(f, -mu[ii] / rho)));
+        mu[ii] = std::clamp(mu[ii] + rho * f, value_type{}, MU_MAX);
+        ++ii;
+      });
+    }
+
+    if (ICM > TAU * prev_ICM) {
+      rho *= GAM;
+    }
+    if (ICM <= ftol) {
+      break;
+    }
+  }
+
+  fret = eval_obj(x);
+  return x;
+}
 
 // Deduction guides
 template <diff::CExpression O>

@@ -52,7 +52,7 @@ template <diff::CExpression Expr> struct Powell {
       for (int i = 0; i < static_cast<int>(N); ++i) {
         const value_type fptt = fret;
         lm.minimize(p, xi.col(i));
-        fret = lm.fret;
+        fret = lm.get_optimal_value();
         if (abs(fptt - fret) > del) {
           del = abs(fptt - fret);
           ibig = i;
@@ -75,7 +75,7 @@ template <diff::CExpression Expr> struct Powell {
         if (value_type{2} * (fp - value_type{2} * fret + fptt) * a * a <
             b * b * del) {
           lm.minimize(p, xit);
-          fret = lm.fret;
+          fret = lm.get_optimal_value();
           xi.col(ibig) = xi.col(static_cast<int>(N) - 1);
           xi.col(static_cast<int>(N) - 1) = xit;
         }
