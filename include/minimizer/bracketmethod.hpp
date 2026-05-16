@@ -27,8 +27,6 @@ template <diff::CExpression Expr> struct Bracketmethod {
   value_type fa{}, fb{}, fc{};
 
   constexpr explicit Bracketmethod(Expr e) : expr(std::move(e)) {}
-
-  // 1D scalar evaluation — only valid for single-variable expressions.
   constexpr value_type eval_at(value_type x)
     requires (N1D == 1)
   {
@@ -36,20 +34,22 @@ template <diff::CExpression Expr> struct Bracketmethod {
     expr.update(Syms{}, v);
     return expr.eval();
   }
-
-  // Step downhill from (ax0, bx0) until the minimum is bracketed.
-  // Only valid for single-variable expressions.
   constexpr void bracket(const value_type &ax0, const value_type &bx0)
-    requires (N1D == 1)
-  {
-    ax = ax0;
-    bx = bx0;
-    fa = eval_at(ax0);
-    fb = eval_at(bx0);
-    auto f = [this](value_type x) { return eval_at(x); };
-    detail::bracket(f, ax, bx, cx, fa, fb, fc);
-  }
+    requires (N1D == 1);
 };
+
+template <diff::CExpression Expr>
+constexpr void Bracketmethod<Expr>::bracket(const value_type &ax0,
+                                            const value_type &bx0)
+  requires(N1D == 1)
+{
+  ax = ax0;
+  bx = bx0;
+  fa = eval_at(ax0);
+  fb = eval_at(bx0);
+  auto f = [this](value_type x) { return eval_at(x); };
+  detail::bracket(f, ax, bx, cx, fa, fb, fc);
+}
 
 template <diff::CExpression Expr> Bracketmethod(Expr) -> Bracketmethod<Expr>;
 
