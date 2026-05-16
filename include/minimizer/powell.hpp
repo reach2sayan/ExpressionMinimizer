@@ -15,7 +15,8 @@ template <diff::CExpression Expr> struct Powell {
   using Point = typename LinMin<Expr>::Point;
   static constexpr std::size_t N = LinMin<Expr>::N;
   // Each column is one search direction; starts as identity (coordinate axes).
-  using Dirs = Eigen::Matrix<value_type, static_cast<int>(N), static_cast<int>(N)>;
+  using Dirs =
+      Eigen::Matrix<value_type, static_cast<int>(N), static_cast<int>(N)>;
 
   static constexpr diff::Constant<value_type> FTINY{1.0e-25};
   static constexpr int ITMAX = 200;
@@ -36,7 +37,8 @@ template <diff::CExpression Expr> struct Powell {
     return minimize(std::move(p), Dirs::Identity());
   }
 
-  // Minimize from p with explicit initial direction set xi (columns = directions).
+  // Minimize from p with explicit initial direction set xi (columns =
+  // directions).
   constexpr Point minimize(Point p, Dirs xi) {
     using std::abs;
     fret = eval_at(p);

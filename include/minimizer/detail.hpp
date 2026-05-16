@@ -180,7 +180,7 @@ constexpr T brent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
 // Functor F must expose operator()(T) (value) and df(T) (derivative).
 // Uses secant interpolation on f′; bisects toward the zero-crossing side
 // when the secant step is outside the bracket or not improving.
-template <diff::Numeric T, typename F>
+template <diff::Numeric T, std::invocable<T> F>
 constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
                    const T &zeps, int itmax = 100) {
   using std::abs;
@@ -197,16 +197,19 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
     const T xm = T{0.5} * (a + b);
     const T tol1 = tol * abs(x) + zeps;
     const T tol2 = T{2} * tol1;
-    if (abs(x - xm) <= tol2 - T{0.5} * (b - a))
+    if (abs(x - xm) <= tol2 - T{0.5} * (b - a)) {
       return x;
+    }
 
     if (abs(e) > tol1) {
       // Attempt secant steps using (x,w) and (x,v) pairs
       T d1 = T{2} * (b - a), d2 = d1;
-      if (dw != dx)
+      if (dw != dx) {
         d1 = (w - x) * dx / (dx - dw);
-      if (dv != dx)
+      }
+      if (dv != dx) {
         d2 = (v - x) * dx / (dx - dv);
+      }
       const T u1 = x + d1, u2 = x + d2;
       const bool ok1 = (a - u1) * (u1 - b) > T{} && dx * d1 <= T{};
       const bool ok2 = (a - u2) * (u2 - b) > T{} && dx * d2 <= T{};
@@ -269,8 +272,9 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
 // LineSearch(xc, xi, fp, slope) → Point  (the step dx = α·xi)
 // EvalGrad(x) → std::pair<T, Eigen::Vector<T,N>>  (value, gradient)
 template <typename T, int N, typename EvalGrad, typename LineSearch>
-Eigen::Vector<T, N> bfgs_impl(EvalGrad &eval_grad, Eigen::Vector<T, N> x,
-                              T ftol, int itmax, LineSearch line_search) {
+constexpr Eigen::Vector<T, N> bfgs_impl(EvalGrad &eval_grad,
+                                        Eigen::Vector<T, N> x, T ftol,
+                                        int itmax, LineSearch line_search) {
   using std::abs, std::max;
   using Point = Eigen::Vector<T, N>;
   using Hessian = Eigen::Matrix<T, N, N>;
@@ -286,8 +290,9 @@ Eigen::Vector<T, N> bfgs_impl(EvalGrad &eval_grad, Eigen::Vector<T, N> x,
       H = Hessian::Identity();
       xi = -g;
       slope = -g.squaredNorm();
-      if (slope == T{})
+      if (slope == T{}) {
         break;
+      }
     }
 
     const Point dx = line_search(x, xi, fp, slope);
@@ -324,26 +329,28 @@ Eigen::Vector<T, N> bfgs_impl(EvalGrad &eval_grad, Eigen::Vector<T, N> x,
 
 // Backtracking Armijo line search (for non-CExpression objectives, e.g.
 // AugLag).
-template <typename T, int N, typename EvalGrad>
-Eigen::Vector<T, N> bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x,
-                                T ftol, int itmax) {
+template <diff::Numeric T, int N, typename EvalGrad>
+constexpr Eigen::Vector<T, N>
+bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
   using Point = Eigen::Vector<T, N>;
   constexpr T EPS = std::numeric_limits<T>::epsilon();
   constexpr T C1{1e-4};
   auto ls = [&](const Point &xc, const Point &xi, T fp, T slope) {
     T alpha{1};
-    for (int k = 0; k < 40 && alpha > EPS; ++k, alpha *= T{0.5})
-      if (eval_grad(xc + alpha * xi).first <= fp + C1 * alpha * slope)
+    for (int k = 0; k < 40 && alpha > EPS; ++k, alpha *= T{0.5}) {
+      if (eval_grad(xc + alpha * xi).first <= fp + C1 * alpha * slope) {
         break;
+      }
+    }
     return alpha * xi;
   };
   return bfgs_impl<T, N>(eval_grad, std::move(x), ftol, itmax, ls);
 }
 
 // Brent exact line search (bracket + Brent 1-D minimization along direction).
-template <typename T, int N, typename EvalGrad>
-Eigen::Vector<T, N> bfgs_brent(EvalGrad eval_grad, Eigen::Vector<T, N> x,
-                               T ftol, int itmax) {
+template <diff::Numeric T, int N, typename EvalGrad>
+constexpr Eigen::Vector<T, N>
+bfgs_brent(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
   using Point = Eigen::Vector<T, N>;
   constexpr T ZEPS = std::numeric_limits<T>::epsilon() * T{1e-3};
   auto ls = [&](const Point &xc, const Point &xi, T /*fp*/, T /*slope*/) {
@@ -357,9 +364,9 @@ Eigen::Vector<T, N> bfgs_brent(EvalGrad eval_grad, Eigen::Vector<T, N> x,
 }
 
 // Dbrent derivative-aware line search (secant on f′ = ∇f · dir).
-template <typename T, int N, typename EvalGrad>
-Eigen::Vector<T, N> bfgs_dbrent(EvalGrad eval_grad, Eigen::Vector<T, N> x,
-                                T ftol, int itmax) {
+template <diff::Numeric T, int N, typename EvalGrad>
+constexpr Eigen::Vector<T, N>
+bfgs_dbrent(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
   using Point = Eigen::Vector<T, N>;
   constexpr T ZEPS = std::numeric_limits<T>::epsilon() * T{1e-3};
   auto ls = [&](const Point &xc, const Point &xi, T /*fp*/, T /*slope*/) {
@@ -367,8 +374,8 @@ Eigen::Vector<T, N> bfgs_dbrent(EvalGrad eval_grad, Eigen::Vector<T, N> x,
     struct Funcd {
       EvalGrad &eg;
       const Point &xc, &xi;
-      T operator()(T t) { return eg(xc + t * xi).first; }
-      T df(T t) { return eg(xc + t * xi).second.dot(xi); }
+      T operator()(T t) const { return eg(xc + t * xi).first; }
+      T df(T t) const { return eg(xc + t * xi).second.dot(xi); }
     } fc{eval_grad, xc, xi};
     T ax{0}, bx{1}, cx, fa = fc(ax), fb = fc(bx), fc_val;
     bracket(fc, ax, bx, cx, fa, fb, fc_val);
