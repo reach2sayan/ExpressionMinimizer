@@ -58,24 +58,26 @@ struct AugLag {
   int iter{};
   const value_type ftol;
 
-  explicit AugLag(Obj o, EqTuple eq_ = {}, IneqTuple ineq_ = {},
+  constexpr explicit AugLag(Obj o, EqTuple eq_ = {}, IneqTuple ineq_ = {},
                   value_type ftol_ = value_type{1e-8},
                   value_type rho0 = value_type{1})
       : obj(std::move(o)), eq(std::move(eq_)), ineq(std::move(ineq_)),
         rho(rho0), ftol(ftol_) {
-    if constexpr (NEQ > 0)
+    if constexpr (NEQ > 0) {
       lambda.setZero();
-    if constexpr (NINEQ > 0)
+    }
+    if constexpr (NINEQ > 0) {
       mu.setZero();
+    }
   }
 
-  value_type eval_obj(const Point &x) {
+  constexpr value_type eval_obj(const Point &x) {
     obj.update(Syms{}, x);
     return obj.eval();
   }
 
   // Assemble L(x) and ∇L(x) via reverse-mode AD on each expression.
-  std::pair<value_type, Point> eval_aug(const Point &x) {
+  constexpr std::pair<value_type, Point> eval_aug(const Point &x) {
     obj.update(Syms{}, x);
     value_type L = obj.eval();
     const auto g0 = diff::gradient<diff::DiffMode::Reverse>(obj);
@@ -123,14 +125,14 @@ struct AugLag {
   }
 
   // BFGS with backtracking Armijo on the augmented Lagrangian.
-  Point inner_minimize(Point x) {
+  constexpr Point inner_minimize(Point x) {
     return detail::bfgs_armijo<value_type, static_cast<int>(N)>(
         [this](const Point &p) { return eval_aug(p); }, std::move(x), ftol,
         INNER_ITMAX);
   }
 
   // Outer Birgin-Martínez loop.
-  Point minimize(Point x) {
+  constexpr Point minimize(Point x) {
     using std::abs, std::max;
 
     // Estimate initial ρ from constraint violation at x₀ (B&M §3.2)
