@@ -27,9 +27,8 @@ template <diff::CExpression... Ts>
 struct constraint_count<diff::Equation<Ts...>>
     : std::integral_constant<std::size_t, diff::Equation<Ts...>::output_dim> {};
 
-template <diff::CExpression... Ts>
-static constexpr std::size_t constraint_count_v =
-    detail::constraint_count<std::tuple<Ts...>>::value;
+template <typename T>
+inline constexpr std::size_t constraint_count_v = constraint_count<T>::value;
 
 } // namespace detail
 
@@ -52,7 +51,8 @@ struct AugLag {
   using Syms = diff::extract_symbols_from_expr_t<Obj>;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
   static constexpr std::size_t NEQ = detail::constraint_count_v<EqConstraints>;
-  static constexpr std::size_t NINEQ = detail::constraint_count_v<IneqConstraints>;
+  static constexpr std::size_t NINEQ =
+      detail::constraint_count_v<IneqConstraints>;
   using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
 
   // Birgin-Martínez magic constants

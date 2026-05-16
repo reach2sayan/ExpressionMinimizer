@@ -817,3 +817,53 @@ TEST(AugLag, BothConstraints) {
     EXPECT_NEAR(p[1],    0.5, 1e-3);
     EXPECT_NEAR(al.fret, 0.5, 1e-3);
 }
+
+// ─────────────────────────────────────────────────────────────
+// LBFGS (limited-memory BFGS) tests
+// ─────────────────────────────────────────────────────────────
+
+TEST(LBFGS, Bowl2D) {
+    auto x = diff::Variable<double, 'x'>{0.0};
+    auto y = diff::Variable<double, 'y'>{0.0};
+    auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
+           + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
+
+    exprmin::LBFGS lbfgs{f};
+    auto p = lbfgs.minimize({0.0, 0.0});
+
+    EXPECT_NEAR(p[0],       1.0, kTol);
+    EXPECT_NEAR(p[1],       2.0, kTol);
+    EXPECT_NEAR(lbfgs.fret, 0.0, kTol * kTol);
+}
+
+TEST(LBFGS, Rosenbrock) {
+    auto x  = diff::Variable<double, 'x'>{0.0};
+    auto y  = diff::Variable<double, 'y'>{0.0};
+    auto t1 = diff::Constant<double>{1.0} - x;
+    auto t2 = y - x * x;
+    auto f  = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
+
+    exprmin::LBFGS lbfgs{f, 1e-10};
+    auto p = lbfgs.minimize({-1.0, 1.0});
+
+    EXPECT_NEAR(p[0],       1.0, 1e-4);
+    EXPECT_NEAR(p[1],       1.0, 1e-4);
+    EXPECT_NEAR(lbfgs.fret, 0.0, 1e-6);
+}
+
+TEST(LBFGS, Quadratic3DWithArmijo) {
+    auto x = diff::Variable<double, 'x'>{0.0};
+    auto y = diff::Variable<double, 'y'>{0.0};
+    auto z = diff::Variable<double, 'z'>{0.0};
+    auto f = x * x
+           + diff::Constant<double>{2.0} * y * y
+           + diff::Constant<double>{3.0} * z * z;
+
+    exprmin::LBFGS<decltype(f), exprmin::LineSearch::Armijo> lbfgs{f};
+    auto p = lbfgs.minimize({3.0, 3.0, 3.0});
+
+    EXPECT_NEAR(p[0],       0.0, kTol);
+    EXPECT_NEAR(p[1],       0.0, kTol);
+    EXPECT_NEAR(p[2],       0.0, kTol);
+    EXPECT_NEAR(lbfgs.fret, 0.0, kTol * kTol);
+}
