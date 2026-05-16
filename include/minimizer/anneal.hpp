@@ -75,14 +75,11 @@ template <diff::CExpression Expr> struct SimAnneal {
   constexpr std::tuple<value_type, Point, Point>
   HotPhaseSA(Simplex &s, FVals &y, FVals &yy) {
 
-    // ── Hot SA phase ──────────────────────────────────────────────────────
-
     Eigen::Index ib_idx;
     y.minCoeff(&ib_idx);
     std::size_t ib = static_cast<std::size_t>(ib_idx);
     value_type ybest = y[ib];
     Point pbest = s.col(ib);
-
     Point psum = s.rowwise().sum();
 
     for (iter = 0; iter < NMAX && temperature > TINY; ++iter) {
@@ -135,18 +132,9 @@ template <diff::CExpression Expr> struct SimAnneal {
     return {ybest, pbest, psum};
   }
 
-  constexpr Point minimize(Simplex s) {
-    FVals y = Eigen::VectorXd::NullaryExpr(
-        N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
+  constexpr std::tuple<value_type, Point>
+ ColdPhaseSA(Simplex &s, FVals &y, FVals &yy, Point& pbest, Point& psum, value_type ybest) {
 
-    FVals yy = y.unaryExpr(
-        [&, this](double v) { return v + this->bolt(temperature); });
-    auto &&[ybest, pbest, psum] = HotPhaseSA(s, y, yy);
-
-    // ── Cold Amoeba refinement from best SA point ─────────────────────────
-    // Rebuild a fresh, non-degenerate simplex at pbest to avoid the
-    // collapsed-simplex false-convergence that the hot phase can cause.
-    s = detail::make_simplex(pbest, cold_delta);
     y.resize(N + 1);
     y = y.NullaryExpr(N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
 
@@ -205,6 +193,23 @@ template <diff::CExpression Expr> struct SimAnneal {
       pbest = s.col(ilo_f);
     }
 
+    return {ybest, pbest};
+  }
+
+
+  constexpr Point minimize(Simplex s) {
+    FVals y = Eigen::VectorXd::NullaryExpr(
+        N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
+
+    FVals yy = y.unaryExpr(
+        [&, this](double v) { return v + this->bolt(temperature); });
+    auto &&[ybest, pbest, psum] = HotPhaseSA(s, y, yy);
+
+    // ── Cold Amoeba refinement from best SA point ─────────────────────────
+    // Rebuild a fresh, non-degenerate simplex at pbest to avoid the
+    // collapsed-simplex false-convergence that the hot phase can cause.
+    s = detail::make_simplex(pbest, cold_delta);
+    std::tie(ybest, pbest) = ColdPhaseSA(s, y, yy, psum, pbest, ybest);
     fret = ybest;
     return pbest;
   }
