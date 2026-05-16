@@ -10,3 +10,4 @@
 #include "anneal.hpp"
 #include "levmar.hpp"
 #include "auglag.hpp"
+#include "lbfgs.hpp"
