@@ -46,13 +46,22 @@ template <diff::CExpression Expr> struct SimAnneal {
   const value_type ftol;
   const value_type cold_delta;
 
+  struct BoltzmannSampler {
+    std::mt19937_64 rng{std::random_device{}()};
+    std::uniform_real_distribution<value_type> udist{
+        std::numeric_limits<value_type>::epsilon(), value_type{1}};
+    constexpr value_type operator()(value_type temp) {
+      return temp * std::log(udist(rng));
+    }
+  } bolt;
+
   constexpr explicit SimAnneal(
       Expr e, value_type T0 = value_type{1},
       value_type cool = static_cast<value_type>(0.9), int epoch = 100,
       value_type ftol_ = static_cast<value_type>(3.0e-8),
       value_type cold_delta_ = static_cast<value_type>(0.1))
       : expr(std::move(e)), temperature(T0), cooling(cool), epoch_steps(epoch),
-        ftol(ftol_), cold_delta(cold_delta_) {}
+        ftol(ftol_), cold_delta(cold_delta_), bolt{} {}
 
   constexpr value_type eval_at(const Point &p) {
     expr.update(Syms{}, p);
@@ -63,21 +72,10 @@ template <diff::CExpression Expr> struct SimAnneal {
     return minimize(detail::make_simplex(p, delta));
   }
 
-  constexpr Point minimize(Simplex s) {
-    std::mt19937_64 rng{std::random_device{}()};
-    std::uniform_real_distribution<value_type> udist{
-        std::numeric_limits<value_type>::epsilon(), value_type{1}};
-
-    auto bolt = [&]() -> value_type {
-      return temperature * std::log(udist(rng));
-    };
+  constexpr std::tuple<value_type, Point, Point>
+  HotPhaseSA(Simplex &s, FVals &y, FVals &yy) {
 
     // ── Hot SA phase ──────────────────────────────────────────────────────
-    // FVals y, yy;
-    FVals y = Eigen::VectorXd::NullaryExpr(
-        N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
-
-    FVals yy = y.unaryExpr([&](double v) { return v + bolt(); });
 
     Eigen::Index ib_idx;
     y.minCoeff(&ib_idx);
@@ -91,7 +89,7 @@ template <diff::CExpression Expr> struct SimAnneal {
       if (iter > 0 && iter % epoch_steps == 0) {
         temperature *= cooling;
         yy = Eigen::VectorXd::NullaryExpr(
-            y.size(), [&](Eigen::Index i) { return y[i] + bolt(); });
+            y.size(), [&](Eigen::Index i) { return y[i] + bolt(temperature); });
       }
 
       Eigen::Index ilo_idx;
@@ -115,12 +113,12 @@ template <diff::CExpression Expr> struct SimAnneal {
         }
       }
 
-      value_type ytry = amotry(s, y, yy, psum, ihi, bolt, value_type{-1});
+      value_type ytry = amotry(s, y, yy, psum, ihi, value_type{-1});
       if (ytry <= yy[ilo]) {
-        amotry(s, y, yy, psum, ihi, bolt, value_type{2});
+        amotry(s, y, yy, psum, ihi, value_type{2});
       } else if (ytry >= yy[inhi]) {
         const value_type ysave = yy[ihi];
-        ytry = amotry(s, y, yy, psum, ihi, bolt, value_type{0.5});
+        ytry = amotry(s, y, yy, psum, ihi, value_type{0.5});
         if (ytry >= ysave) {
           for (Eigen::Index k = 0; k <= static_cast<Eigen::Index>(N); ++k) {
             if (k == static_cast<Eigen::Index>(ilo)) {
@@ -128,12 +126,22 @@ template <diff::CExpression Expr> struct SimAnneal {
             }
             s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
             y[k] = eval_at(s.col(k));
-            yy[k] = y[k] + bolt();
+            yy[k] = y[k] + bolt(temperature);
           }
           psum = s.rowwise().sum();
         }
       }
     }
+    return {ybest, pbest, psum};
+  }
+
+  constexpr Point minimize(Simplex s) {
+    FVals y = Eigen::VectorXd::NullaryExpr(
+        N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
+
+    FVals yy = y.unaryExpr(
+        [&, this](double v) { return v + this->bolt(temperature); });
+    auto &&[ybest, pbest, psum] = HotPhaseSA(s, y, yy);
 
     // ── Cold Amoeba refinement from best SA point ─────────────────────────
     // Rebuild a fresh, non-degenerate simplex at pbest to avoid the
@@ -202,15 +210,13 @@ template <diff::CExpression Expr> struct SimAnneal {
   }
 
 private:
-  template <std::invocable<> Bolt>
   constexpr value_type amotry(Simplex &s, FVals &y, FVals &yy, Point &psum,
-                              const std::size_t ihi, Bolt &bolt,
-                              const value_type &fac) {
+                              const std::size_t ihi, const value_type &fac) {
     const value_type fac1 = (value_type{1} - fac) / static_cast<value_type>(N);
     const value_type fac2 = fac1 - fac;
     const Point ptry = fac1 * psum - fac2 * s.col(ihi);
     const value_type ytry_real = eval_at(ptry);
-    const value_type ytry = ytry_real + bolt();
+    const value_type ytry = ytry_real + bolt(temperature);
     if (ytry < yy[ihi]) {
       psum += ptry - s.col(ihi);
       s.col(ihi) = ptry;

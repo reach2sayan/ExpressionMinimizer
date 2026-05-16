@@ -25,9 +25,9 @@ struct LBFGS : QuasiNewtonBase<Expr, LS1D> {
 
   constexpr Point minimize(Point p) {
     const auto eg = [this](const Point &q) { return this->eval_grad(q); };
-    auto ls_fn = this->make_ls_fn();
+    auto ls_fn = this->make_line_search_fn();
     detail::LBFGSDirState<value_type, static_cast<int>(Base::N), M> ds;
-    p = detail::qn_impl<value_type, static_cast<int>(Base::N)>(
+    p = detail::quasi_newton_impl<value_type, static_cast<int>(Base::N)>(
         eg, std::move(p), this->gtol, ITMAX, ls_fn, ds, this->iter);
     this->fret = this->eval_at(p);
     return p;
@@ -35,6 +35,7 @@ struct LBFGS : QuasiNewtonBase<Expr, LS1D> {
 };
 
 template <diff::CExpression Expr> LBFGS(Expr) -> LBFGS<Expr>;
-template <diff::CExpression Expr, typename T> LBFGS(Expr, T) -> LBFGS<Expr>;
+template <diff::CExpression Expr, diff::Numeric T>
+LBFGS(Expr, T) -> LBFGS<Expr>;
 
 } // namespace exprmin

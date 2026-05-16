@@ -77,10 +77,10 @@ struct QuasiNewtonBase {
     return {ls.expr.eval(), Eigen::Map<const Point>(g_arr.data())};
   }
 
-  // Returns a line search callable (xc, xi, fp, slope) → dx for qn_impl.
+  // Returns a line search callable (xc, xi, fp, slope) → dx for quasi_newton_impl.
   // Dispatches to the owned ls.minimize_fn; Armijo needs fp/slope, Brent/Dbrent
   // do bracket + 1D minimization.
-  constexpr auto make_ls_fn() {
+  constexpr auto make_line_search_fn() {
     return [this](const Point &xc, const Point &xi, value_type fp,
                   value_type slope) -> Point {
       auto f1d = [this, &xc, &xi](value_type t) {
@@ -130,9 +130,9 @@ struct BFGS : QuasiNewtonBase<Expr, LS1D> {
 
   constexpr Point minimize(Point p) {
     const auto eg = [this](const Point &q) { return this->eval_grad(q); };
-    auto ls_fn = this->make_ls_fn();
+    auto ls_fn = this->make_line_search_fn();
     detail::BFGSDirState<value_type, static_cast<int>(Base::N)> ds;
-    p = detail::qn_impl<value_type, static_cast<int>(Base::N)>(
+    p = detail::quasi_newton_impl<value_type, static_cast<int>(Base::N)>(
         eg, std::move(p), this->gtol, ITMAX, ls_fn, ds, this->iter);
     this->fret = this->eval_at(p);
     return p;

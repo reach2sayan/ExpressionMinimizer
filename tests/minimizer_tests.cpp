@@ -804,13 +804,14 @@ TEST(AugLag, InequalityConstrained) {
 TEST(AugLag, BothConstraints) {
     // min x²+y²  s.t.  x−y = 0  (equality)  and  1−x−y ≤ 0  (inequality: x+y≥1)
     // Analytic: x=y=0.5, f=0.5
-    auto x = diff::Variable<double, 'x'>{0.0};
-    auto y = diff::Variable<double, 'y'>{0.0};
+    auto x = PV(0.0,'x');
+    auto y = PV(0.0,'y');
     auto f  = x * x + y * y;
-    auto h  = x - y;                                                   // x=y
-    auto g  = diff::Constant<double>{1.0} - x - y;                    // x+y≥1
+    diff::Equation h  = x - y;                                                   // x=y
+    diff::Equation g  = 1.0 - x - y;                    // x+y≥1
 
-    exprmin::AugLag al{f, exprmin::make_eq(h), exprmin::make_ineq(g)};
+    exprmin::AugLag al{f, h, g};
+    //exprmin::AugLag al{f, h, g};
     auto p = al.minimize({2.0, 0.0});
 
     EXPECT_NEAR(p[0],    0.5, 1e-3);
@@ -825,8 +826,7 @@ TEST(AugLag, BothConstraints) {
 TEST(LBFGS, Bowl2D) {
     auto x = diff::Variable<double, 'x'>{0.0};
     auto y = diff::Variable<double, 'y'>{0.0};
-    auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
-           + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
+    auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
 
     exprmin::LBFGS lbfgs{f};
     auto p = lbfgs.minimize({0.0, 0.0});
@@ -839,9 +839,9 @@ TEST(LBFGS, Bowl2D) {
 TEST(LBFGS, Rosenbrock) {
     auto x  = diff::Variable<double, 'x'>{0.0};
     auto y  = diff::Variable<double, 'y'>{0.0};
-    auto t1 = diff::Constant<double>{1.0} - x;
+    auto t1 = 1.0 - x;
     auto t2 = y - x * x;
-    auto f  = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
+    auto f  = t1 * t1 + 100.0 * t2 * t2;
 
     exprmin::LBFGS lbfgs{f, 1e-10};
     auto p = lbfgs.minimize({-1.0, 1.0});
