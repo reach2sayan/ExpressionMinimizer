@@ -56,8 +56,8 @@ TEST(Golden, QuadraticMinimum) {
   double xmin = golden.minimize(0.0, 5.0);
 
   EXPECT_NEAR(xmin, 2.0, kTol);
-  EXPECT_NEAR(golden.xmin, 2.0, kTol);
-  EXPECT_NEAR(golden.fmin, 0.0, kTol * kTol);
+  EXPECT_NEAR(golden.get_optimal_x(), 2.0, kTol);
+  EXPECT_NEAR(golden.get_optimal_value(), 0.0, kTol * kTol);
 }
 
 TEST(Golden, SineMinimum) {
@@ -77,7 +77,7 @@ TEST(Golden, SineMinimum) {
   double xmin = g.minimize();
 
   EXPECT_NEAR(xmin, 3.0 * std::numbers::pi / 2.0, kTol);
-  EXPECT_NEAR(g.fmin, -1.0, kTol);
+  EXPECT_NEAR(g.get_optimal_value(), -1.0, kTol);
 }
 
 TEST(Golden, NegativeQuadratic) {
@@ -90,14 +90,13 @@ TEST(Golden, NegativeQuadratic) {
   double xmin = g.minimize(-3.0, 2.0);
 
   EXPECT_NEAR(xmin, -1.0, kTol);
-  EXPECT_NEAR(g.fmin, 0.0, kTol * kTol);
+  EXPECT_NEAR(g.get_optimal_value(), 0.0, kTol * kTol);
 }
 
 TEST(Golden, CustomTolerance) {
   // Tighter tolerance: 1e-10
   auto x = diff::Variable<double, 'x'>{0.0};
-  auto f =
-      (x - diff::Constant<double>{7.5}) * (x - diff::Constant<double>{7.5});
+  auto f = (x - 7.5) * (x - 7.5);
 
   exprmin::Golden g{f, 1.0e-10};
   double xmin = g.minimize(5.0, 10.0);
@@ -130,7 +129,7 @@ TEST(Brent, QuadraticMinimum) {
   double xmin = b.minimize(0.0, 5.0);
 
   EXPECT_NEAR(xmin, 2.0, kTol);
-  EXPECT_NEAR(b.fmin, 0.0, kTol * kTol);
+  EXPECT_NEAR(b.get_optimal_value(), 0.0, kTol * kTol);
 }
 
 TEST(Brent, SineMinimum) {
@@ -147,7 +146,7 @@ TEST(Brent, SineMinimum) {
   double xmin = b.minimize();
 
   EXPECT_NEAR(xmin, 3.0 * std::numbers::pi / 2.0, kTol);
-  EXPECT_NEAR(b.fmin, -1.0, kTol);
+  EXPECT_NEAR(b.get_optimal_value(), -1.0, kTol);
 }
 
 TEST(Brent, QuarticMinimum) {
@@ -161,7 +160,7 @@ TEST(Brent, QuarticMinimum) {
   double xmin = b.minimize(0.0, 3.0);
 
   EXPECT_NEAR(xmin, 1.0, kTol);
-  EXPECT_NEAR(b.fmin, 0.0, kTol * kTol);
+  EXPECT_NEAR(b.get_optimal_value(), 0.0, kTol * kTol);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -173,9 +172,7 @@ TEST(LinMin, AxisDirection) {
   // minimum along x-axis at t=3 → p=(3,0)
   auto x = diff::Variable<double, 'x'>{0.0};
   auto y = diff::Variable<double, 'y'>{0.0};
-  auto f =
-      (x - diff::Constant<double>{3.0}) * (x - diff::Constant<double>{3.0}) +
-      (y - diff::Constant<double>{4.0}) * (y - diff::Constant<double>{4.0});
+  auto f = (x - 3) * (x - 3) + (y - 4) * (y - 4);
 
   exprmin::LinMin lm{f};
   Eigen::Vector2d p{0.0, 0.0};
@@ -192,9 +189,7 @@ TEST(LinMin, DiagonalDirection) {
   // minimise (t-3)^2 + (t-4)^2 → t=3.5 → p=(3.5, 3.5)
   auto x = diff::Variable<double, 'x'>{0.0};
   auto y = diff::Variable<double, 'y'>{0.0};
-  auto f =
-      (x - diff::Constant<double>{3.0}) * (x - diff::Constant<double>{3.0}) +
-      (y - diff::Constant<double>{4.0}) * (y - diff::Constant<double>{4.0});
+  auto f = (x - 3) * (x - 3) + (y - 4) * (y - 4);
 
   exprmin::LinMin lm{f};
   Eigen::Vector2d p{0.0, 0.0};
@@ -307,8 +302,8 @@ TEST(Frprmn, FletcherReeves) {
   auto x = diff::Variable<double, 'x'>{0.0};
   auto y = diff::Variable<double, 'y'>{0.0};
   auto f =
-      (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0}) +
-      (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
+      (x - 1) * (x - 1) +
+      (y - 2) * (y - 2);
 
   exprmin::Frprmn<decltype(f), exprmin::CGMethod::FletcherReeves> cg{f};
   auto p = cg.minimize({0.0, 0.0});
@@ -406,8 +401,7 @@ TEST(Amoeba, Quadratic3D) {
   auto x = diff::Variable<double, 'x'>{0.0};
   auto y = diff::Variable<double, 'y'>{0.0};
   auto z = diff::Variable<double, 'z'>{0.0};
-  auto f = x * x + 2* y * y +
-          3 * z * z;
+  auto f = x * x + 2 * y * y + 3 * z * z;
 
   exprmin::Amoeba am{f};
   auto p = am.minimize({3.0, 3.0, 3.0}, 1.0);
@@ -518,7 +512,7 @@ TEST(Dbrent, QuadraticMinimum) {
   double xmin = db.minimize(0.0, 5.0);
 
   EXPECT_NEAR(xmin, 2.0, kTol);
-  EXPECT_NEAR(db.fmin, 0.0, kTol * kTol);
+  EXPECT_NEAR(db.get_optimal_value(), 0.0, kTol * kTol);
 }
 
 TEST(Dbrent, SineMinimum) {
@@ -535,7 +529,7 @@ TEST(Dbrent, SineMinimum) {
   double xmin = db.minimize();
 
   EXPECT_NEAR(xmin, 3.0 * std::numbers::pi / 2.0, kTol);
-  EXPECT_NEAR(db.fmin, -1.0, kTol);
+  EXPECT_NEAR(db.get_optimal_value(), -1.0, kTol);
 }
 
 TEST(Dbrent, QuarticMinimum) {
@@ -547,7 +541,7 @@ TEST(Dbrent, QuarticMinimum) {
   double xmin = db.minimize(0.0, 3.0);
 
   EXPECT_NEAR(xmin, 1.0, kTol);
-  EXPECT_NEAR(db.fmin, 0.0, kTol * kTol);
+  EXPECT_NEAR(db.get_optimal_value(), 0.0, kTol * kTol);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -601,9 +595,7 @@ TEST(DFrprmn, Quadratic3D) {
 TEST(DFrprmn, FletcherReeves) {
   auto x = diff::Variable<double, 'x'>{0.0};
   auto y = diff::Variable<double, 'y'>{0.0};
-  auto f =
-      (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0}) +
-      (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
+  auto f = (x - 1) * (x - 1) + (y - 2) * (y - 2);
 
   exprmin::DFrprmn<decltype(f), exprmin::CGMethod::FletcherReeves> cg{f};
   auto p = cg.minimize({0.0, 0.0});

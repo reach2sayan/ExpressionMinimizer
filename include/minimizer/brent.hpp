@@ -25,9 +25,15 @@ struct Brent : Bracketmethod<Expr> {
       std::numeric_limits<value_type>::epsilon() * static_cast<value_type>(1.0e-3);
   static constexpr int ITMAX = 100;
 
+protected:
   value_type xmin{};
   value_type fmin{};
   const value_type tol;
+
+public:
+  constexpr value_type get_optimal_value() const { return fmin; }
+  constexpr value_type const& get_optimal_x() const { return xmin; }
+  constexpr value_type& get_optimal_x() { return xmin; }
 
   constexpr explicit Brent(Expr e,
                            value_type tol_ = static_cast<value_type>(3.0e-8))

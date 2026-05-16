@@ -28,56 +28,21 @@ template <diff::CExpression Expr> struct Golden : Bracketmethod<Expr> {
   static constexpr diff::Constant<value_type> C{
       1.0 - 1.0 / std::numbers::phi_v<double>};
 
+private:
   value_type xmin{};
   value_type fmin{};
   const value_type tol;
 
+public:
+  constexpr value_type get_optimal_value() const { return fmin; }
+  constexpr value_type get_optimal_x() const { return xmin; }
   constexpr explicit Golden(Expr e,
                             value_type tol_ = static_cast<value_type>(3.0e-8))
       : Base(std::move(e)), tol(tol_) {}
 
   // Perform golden section search on the already-bracketed triplet
   // (ax, bx, cx).  Call bracket() first, or set the triplet manually.
-  constexpr value_type minimize() {
-    using std::abs;
-
-    value_type x0 = ax, x3 = cx, x1{}, x2{};
-    if (abs(cx - bx) > abs(bx - ax)) {
-      x1 = bx;
-      x2 = bx + C * (cx - bx);
-    } else {
-      x2 = bx;
-      x1 = bx - C * (bx - ax);
-    }
-
-    auto f1 = eval_at(x1);
-    auto f2 = eval_at(x2);
-
-    while (abs(x3 - x0) > tol * (abs(x1) + abs(x2))) {
-      if (f2 < f1) {
-        x0 = x1;
-        x1 = x2;
-        x2 = R * x2 + C * x3;
-        f1 = f2;
-        f2 = eval_at(x2);
-      } else {
-        x3 = x2;
-        x2 = x1;
-        x1 = R * x1 + C * x0;
-        f2 = f1;
-        f1 = eval_at(x1);
-      }
-    }
-
-    if (f1 < f2) {
-      xmin = x1;
-      fmin = f1;
-    } else {
-      xmin = x2;
-      fmin = f2;
-    }
-    return xmin;
-  }
+  constexpr value_type minimize();
 
   // Convenience: bracket from (ax0, bx0) then minimize.
   constexpr value_type minimize(const value_type &ax0, const value_type &bx0) {
@@ -85,6 +50,48 @@ template <diff::CExpression Expr> struct Golden : Bracketmethod<Expr> {
     return minimize();
   }
 };
+
+template <diff::CExpression Expr>
+constexpr typename Golden<Expr>::value_type Golden<Expr>::minimize() {
+  using std::abs;
+
+  value_type x0 = ax, x3 = cx, x1{}, x2{};
+  if (abs(cx - bx) > abs(bx - ax)) {
+    x1 = bx;
+    x2 = bx + C * (cx - bx);
+  } else {
+    x2 = bx;
+    x1 = bx - C * (bx - ax);
+  }
+
+  auto f1 = eval_at(x1);
+  auto f2 = eval_at(x2);
+
+  while (abs(x3 - x0) > tol * (abs(x1) + abs(x2))) {
+    if (f2 < f1) {
+      x0 = x1;
+      x1 = x2;
+      x2 = R * x2 + C * x3;
+      f1 = f2;
+      f2 = eval_at(x2);
+    } else {
+      x3 = x2;
+      x2 = x1;
+      x1 = R * x1 + C * x0;
+      f2 = f1;
+      f1 = eval_at(x1);
+    }
+  }
+
+  if (f1 < f2) {
+    xmin = x1;
+    fmin = f1;
+  } else {
+    xmin = x2;
+    fmin = f2;
+  }
+  return xmin;
+}
 
 template <diff::CExpression Expr> Golden(Expr) -> Golden<Expr>;
 template <diff::CExpression Expr, typename T> Golden(Expr, T) -> Golden<Expr>;
