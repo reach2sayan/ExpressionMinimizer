@@ -15,8 +15,7 @@ namespace mp = boost::mp11;
 // ── Armijo<Expr> ─────────────────────────────────────────────────────────────
 // Backtracking sufficient-decrease line search.  Owns the expression for
 // eval_at; minimize_fn takes any 1D callable + (fp, slope) and returns t_min.
-template <diff::CExpression Expr>
-struct Armijo {
+template <diff::CExpression Expr> struct Armijo {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
@@ -50,36 +49,39 @@ struct Armijo {
 template <diff::CExpression Expr> Armijo(Expr) -> Armijo<Expr>;
 template <diff::CExpression Expr, typename T> Armijo(Expr, T) -> Armijo<Expr>;
 
-// ── QuasiNewtonBase<Expr, LS1D> ───────────────────────────────────────────────
-// Shared base for BFGS and LBFGS: owns LS1D<Expr> ls, provides eval_at /
-// eval_grad through ls.expr, and builds the N-D line search callable.
-template <diff::CExpression Expr,
-          template <diff::CExpression> class LS1D>
+// ── QuasiNewtonBase<Expr, LS1D>
+// ─────────────────────────────────────────────── Shared base for BFGS and
+// LBFGS: owns LS1D<Expr> ls, provides eval_at / eval_grad through ls.expr, and
+// builds the N-D line search callable.
+template <diff::CExpression Expr, template <diff::CExpression> class LS1D>
 struct QuasiNewtonBase {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
   using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
 
+protected:
   LS1D<Expr> ls;
   value_type fret{};
   int iter{};
   const value_type gtol;
 
+public:
   constexpr explicit QuasiNewtonBase(Expr e, value_type gtol_)
       : ls(std::move(e), gtol_), gtol(gtol_) {}
 
   constexpr value_type eval_at(const Point &p) { return ls.eval_at(p); }
-
+  constexpr value_type operator()(const Point &p) { return eval_at(p); }
+  constexpr value_type get_optimal_value() const { return fret; }
   constexpr std::pair<value_type, Point> eval_grad(const Point &p) {
     ls.expr.update(Syms{}, p);
     const auto g_arr = diff::gradient<diff::DiffMode::Reverse>(ls.expr);
     return {ls.expr.eval(), Eigen::Map<const Point>(g_arr.data())};
   }
 
-  // Returns a line search callable (xc, xi, fp, slope) → dx for quasi_newton_impl.
-  // Dispatches to the owned ls.minimize_fn; Armijo needs fp/slope, Brent/Dbrent
-  // do bracket + 1D minimization.
+  // Returns a line search callable (xc, xi, fp, slope) → dx for
+  // quasi_newton_impl. Dispatches to the owned ls.minimize_fn; Armijo needs
+  // fp/slope, Brent/Dbrent do bracket + 1D minimization.
   constexpr auto make_line_search_fn() {
     return [this](const Point &xc, const Point &xi, value_type fp,
                   value_type slope) -> Point {
@@ -120,8 +122,8 @@ template <diff::CExpression Expr,
           template <diff::CExpression> class LS1D = Brent>
 struct BFGS : QuasiNewtonBase<Expr, LS1D> {
   using Base = QuasiNewtonBase<Expr, LS1D>;
-  using typename Base::value_type;
   using typename Base::Point;
+  using typename Base::value_type;
   static constexpr int ITMAX = 200;
 
   constexpr explicit BFGS(Expr e,
