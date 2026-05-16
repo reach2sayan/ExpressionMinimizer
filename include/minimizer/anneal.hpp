@@ -37,6 +37,7 @@ template <diff::CExpression Expr> struct SimAnneal {
   static constexpr value_type TINY{1.0e-10};
   static constexpr int NMAX = 200'000;
 
+private:
   Expr expr;
   value_type fret{};
   int iter{};
@@ -55,6 +56,7 @@ template <diff::CExpression Expr> struct SimAnneal {
     }
   } bolt;
 
+public:
   constexpr explicit SimAnneal(
       Expr e, value_type T0 = value_type{1},
       value_type cool = static_cast<value_type>(0.9), int epoch = 100,
@@ -63,139 +65,9 @@ template <diff::CExpression Expr> struct SimAnneal {
       : expr(std::move(e)), temperature(T0), cooling(cool), epoch_steps(epoch),
         ftol(ftol_), cold_delta(cold_delta_), bolt{} {}
 
-  constexpr value_type eval_at(const Point &p) {
-    expr.update(Syms{}, p);
-    return expr.eval();
-  }
-
   constexpr Point minimize(const Point &p, const value_type &delta) {
     return minimize(detail::make_simplex(p, delta));
   }
-
-  constexpr std::tuple<value_type, Point, Point>
-  HotPhaseSA(Simplex &s, FVals &y, FVals &yy) {
-
-    Eigen::Index ib_idx;
-    y.minCoeff(&ib_idx);
-    std::size_t ib = static_cast<std::size_t>(ib_idx);
-    value_type ybest = y[ib];
-    Point pbest = s.col(ib);
-    Point psum = s.rowwise().sum();
-
-    for (iter = 0; iter < NMAX && temperature > TINY; ++iter) {
-      if (iter > 0 && iter % epoch_steps == 0) {
-        temperature *= cooling;
-        yy = Eigen::VectorXd::NullaryExpr(
-            y.size(), [&](Eigen::Index i) { return y[i] + bolt(temperature); });
-      }
-
-      Eigen::Index ilo_idx;
-      yy.minCoeff(&ilo_idx);
-      const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
-      std::size_t ihi = (yy[0] > yy[1]) ? 0uz : 1uz;
-      std::size_t inhi = 1uz - ihi;
-      for (auto i : std::views::iota(2uz, N + 1)) {
-        if (yy[i] > yy[ihi]) {
-          inhi = ihi;
-          ihi = i;
-        } else if (yy[i] > yy[inhi] && i != ihi) {
-          inhi = i;
-        }
-      }
-
-      for (auto i : std::views::iota(0uz, N + 1)) {
-        if (y[i] < ybest) {
-          ybest = y[i];
-          pbest = s.col(i);
-        }
-      }
-
-      value_type ytry = amotry(s, y, yy, psum, ihi, value_type{-1});
-      if (ytry <= yy[ilo]) {
-        amotry(s, y, yy, psum, ihi, value_type{2});
-      } else if (ytry >= yy[inhi]) {
-        const value_type ysave = yy[ihi];
-        ytry = amotry(s, y, yy, psum, ihi, value_type{0.5});
-        if (ytry >= ysave) {
-          for (Eigen::Index k = 0; k <= static_cast<Eigen::Index>(N); ++k) {
-            if (k == static_cast<Eigen::Index>(ilo)) {
-              continue;
-            }
-            s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
-            y[k] = eval_at(s.col(k));
-            yy[k] = y[k] + bolt(temperature);
-          }
-          psum = s.rowwise().sum();
-        }
-      }
-    }
-    return {ybest, pbest, psum};
-  }
-
-  constexpr std::tuple<value_type, Point>
- ColdPhaseSA(Simplex &s, FVals &y, FVals &yy, Point& pbest, Point& psum, value_type ybest) {
-
-    y.resize(N + 1);
-    y = y.NullaryExpr(N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
-
-    psum = s.rowwise().sum();
-
-    static constexpr value_type ATINY{1.0e-20};
-    for (int cold = 0; cold < NMAX; ++cold, ++iter) {
-      Eigen::Index ilo_idx;
-      y.minCoeff(&ilo_idx);
-      const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
-      std::size_t ihi = (y[0] > y[1]) ? 0uz : 1uz;
-      std::size_t inhi = 1uz - ihi;
-      for (auto i : std::views::iota(2uz, N + 1)) {
-        if (y[i] > y[ihi]) {
-          inhi = ihi;
-          ihi = i;
-        } else if (y[i] > y[inhi] && i != ihi) {
-          inhi = i;
-        }
-      }
-
-      if (y[ilo] < ybest) {
-        ybest = y[ilo];
-        pbest = s.col(ilo);
-      }
-
-      const value_type denom = std::abs(y[ihi]) + std::abs(y[ilo]) + ATINY;
-      if (value_type{2} * std::abs(y[ihi] - y[ilo]) / denom < ftol) {
-        break;
-      }
-
-      value_type ytry = amotry_cold(s, y, psum, ihi, value_type{-1});
-      if (ytry <= y[ilo]) {
-        amotry_cold(s, y, psum, ihi, value_type{2});
-      } else if (ytry >= y[inhi]) {
-        const value_type ysave = y[ihi];
-        ytry = amotry_cold(s, y, psum, ihi, value_type{0.5});
-        if (ytry >= ysave) {
-          for (std::size_t k = 0; k <= N; ++k) {
-            if (k == ilo) {
-              continue;
-            }
-            s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
-            y[k] = eval_at(s.col(k));
-          }
-          psum = s.rowwise().sum();
-        }
-      }
-    }
-
-    Eigen::Index ilo_f_idx;
-    y.minCoeff(&ilo_f_idx);
-    const std::size_t ilo_f = static_cast<std::size_t>(ilo_f_idx);
-    if (y[ilo_f] < ybest) {
-      ybest = y[ilo_f];
-      pbest = s.col(ilo_f);
-    }
-
-    return {ybest, pbest};
-  }
-
 
   constexpr Point minimize(Simplex s) {
     FVals y = Eigen::VectorXd::NullaryExpr(
@@ -203,18 +75,33 @@ template <diff::CExpression Expr> struct SimAnneal {
 
     FVals yy = y.unaryExpr(
         [&, this](double v) { return v + this->bolt(temperature); });
-    auto &&[ybest, pbest, psum] = HotPhaseSA(s, y, yy);
+    auto &&[ybest, pbest] = HotPhaseSA(std::move(s), y, yy);
 
-    // ── Cold Amoeba refinement from best SA point ─────────────────────────
-    // Rebuild a fresh, non-degenerate simplex at pbest to avoid the
-    // collapsed-simplex false-convergence that the hot phase can cause.
     s = detail::make_simplex(pbest, cold_delta);
-    std::tie(ybest, pbest) = ColdPhaseSA(s, y, yy, psum, pbest, ybest);
+    std::tie(ybest, pbest) = ColdPhaseSA(s, std::move(y), std::move(yy),
+                                         std::move(pbest), std::move(ybest));
     fret = ybest;
     return pbest;
   }
 
+  constexpr value_type get_optimal_value() const { return fret; }
+  constexpr value_type operator()(const Point &p) { return eval_at(p); }
+
 private:
+  constexpr value_type eval_at(const Point &p) {
+    expr.update(Syms{}, p);
+    return expr.eval();
+  }
+
+  constexpr std::tuple<value_type, Point> HotPhaseSA(Simplex s, FVals &y,
+                                                     FVals &yy);
+
+  // ── Cold Amoeba refinement from best SA point ─────────────────────────
+  // Rebuild a fresh, non-degenerate simplex at pbest to avoid the
+  // collapsed-simplex false-convergence that the hot phase can cause.
+  constexpr std::tuple<value_type, Point>
+  ColdPhaseSA(Simplex s, FVals y, FVals yy, Point pbest, value_type ybest);
+
   constexpr value_type amotry(Simplex &s, FVals &y, FVals &yy, Point &psum,
                               const std::size_t ihi, const value_type &fac) {
     const value_type fac1 = (value_type{1} - fac) / static_cast<value_type>(N);
@@ -246,6 +133,132 @@ private:
     return ytry;
   }
 };
+template <diff::CExpression Expr>
+constexpr std::tuple<typename SimAnneal<Expr>::value_type,
+                     typename SimAnneal<Expr>::Point>
+SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y, FVals &yy) {
+
+  Eigen::Index ib_idx;
+  y.minCoeff(&ib_idx);
+  std::size_t ib = static_cast<std::size_t>(ib_idx);
+  value_type ybest = y[ib];
+  Point pbest = s.col(ib);
+  Point psum = s.rowwise().sum();
+
+  for (iter = 0; iter < NMAX && temperature > TINY; ++iter) {
+    if (iter > 0 && iter % epoch_steps == 0) {
+      temperature *= cooling;
+      yy = Eigen::VectorXd::NullaryExpr(
+          y.size(), [&](Eigen::Index i) { return y[i] + bolt(temperature); });
+    }
+
+    Eigen::Index ilo_idx;
+    yy.minCoeff(&ilo_idx);
+    const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
+    std::size_t ihi = (yy[0] > yy[1]) ? 0uz : 1uz;
+    std::size_t inhi = 1uz - ihi;
+    for (auto i : std::views::iota(2uz, N + 1)) {
+      if (yy[i] > yy[ihi]) {
+        inhi = ihi;
+        ihi = i;
+      } else if (yy[i] > yy[inhi] && i != ihi) {
+        inhi = i;
+      }
+    }
+
+    for (auto i : std::views::iota(0uz, N + 1)) {
+      if (y[i] < ybest) {
+        ybest = y[i];
+        pbest = s.col(i);
+      }
+    }
+
+    value_type ytry = amotry(s, y, yy, psum, ihi, value_type{-1});
+    if (ytry <= yy[ilo]) {
+      amotry(s, y, yy, psum, ihi, value_type{2});
+    } else if (ytry >= yy[inhi]) {
+      const value_type ysave = yy[ihi];
+      ytry = amotry(s, y, yy, psum, ihi, value_type{0.5});
+      if (ytry >= ysave) {
+        for (Eigen::Index k = 0; k <= static_cast<Eigen::Index>(N); ++k) {
+          if (k == static_cast<Eigen::Index>(ilo)) {
+            continue;
+          }
+          s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
+          y[k] = eval_at(s.col(k));
+          yy[k] = y[k] + bolt(temperature);
+        }
+        psum = s.rowwise().sum();
+      }
+    }
+  }
+  return {ybest, pbest};
+}
+template <diff::CExpression Expr>
+constexpr std::tuple<typename SimAnneal<Expr>::value_type,
+                     typename SimAnneal<Expr>::Point>
+SimAnneal<Expr>::ColdPhaseSA(Simplex s, FVals y, FVals yy, Point pbest,
+                             value_type ybest) {
+
+  y.resize(N + 1);
+  y = y.NullaryExpr(N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
+  Point psum = s.rowwise().sum();
+
+  static constexpr value_type ATINY{1.0e-20};
+  for (int cold = 0; cold < NMAX; ++cold, ++iter) {
+    Eigen::Index ilo_idx;
+    y.minCoeff(&ilo_idx);
+    const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
+    std::size_t ihi = (y[0] > y[1]) ? 0uz : 1uz;
+    std::size_t inhi = 1uz - ihi;
+    for (auto i : std::views::iota(2uz, N + 1)) {
+      if (y[i] > y[ihi]) {
+        inhi = ihi;
+        ihi = i;
+      } else if (y[i] > y[inhi] && i != ihi) {
+        inhi = i;
+      }
+    }
+
+    if (y[ilo] < ybest) {
+      ybest = y[ilo];
+      pbest = s.col(ilo);
+    }
+
+    const value_type denom = std::abs(y[ihi]) + std::abs(y[ilo]) + ATINY;
+    if (value_type{2} * std::abs(y[ihi] - y[ilo]) / denom < ftol) {
+      break;
+    }
+
+    value_type ytry = amotry_cold(s, y, psum, ihi, value_type{-1});
+    if (ytry <= y[ilo]) {
+      amotry_cold(s, y, psum, ihi, value_type{2});
+    } else if (ytry >= y[inhi]) {
+      const value_type ysave = y[ihi];
+      ytry = amotry_cold(s, y, psum, ihi, value_type{0.5});
+      if (ytry >= ysave) {
+        for (std::size_t k = 0; k <= N; ++k) {
+          if (k == ilo) {
+            continue;
+          }
+          s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
+          y[k] = eval_at(s.col(k));
+        }
+        psum = s.rowwise().sum();
+      }
+    }
+  }
+
+  Eigen::Index ilo_f_idx;
+  y.minCoeff(&ilo_f_idx);
+  const std::size_t ilo_f = static_cast<std::size_t>(ilo_f_idx);
+  if (y[ilo_f] < ybest) {
+    ybest = y[ilo_f];
+    pbest = s.col(ilo_f);
+  }
+
+  return {ybest, pbest};
+}
 
 template <diff::CExpression Expr> SimAnneal(Expr) -> SimAnneal<Expr>;
 template <diff::CExpression Expr, typename T>

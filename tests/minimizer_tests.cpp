@@ -436,7 +436,7 @@ TEST(SimAnneal, Bowl2D) {
 
     EXPECT_NEAR(p[0],    1.0, 1e-3);
     EXPECT_NEAR(p[1],    2.0, 1e-3);
-    EXPECT_NEAR(sa.fret, 0.0, 1e-5);
+    EXPECT_NEAR(sa.get_optimal_value(), 0.0, 1e-5);
 }
 
 TEST(SimAnneal, Rosenbrock) {
@@ -453,7 +453,7 @@ TEST(SimAnneal, Rosenbrock) {
 
     EXPECT_NEAR(p[0],    1.0, 1e-2);
     EXPECT_NEAR(p[1],    1.0, 1e-2);
-    EXPECT_NEAR(sa.fret, 0.0, 1e-3);
+    EXPECT_NEAR(sa.get_optimal_value(), 0.0, 1e-3);
 }
 
 TEST(SimAnneal, Quadratic3D) {
@@ -471,7 +471,7 @@ TEST(SimAnneal, Quadratic3D) {
     EXPECT_NEAR(p[0],    0.0, 1e-3);
     EXPECT_NEAR(p[1],    0.0, 1e-3);
     EXPECT_NEAR(p[2],    0.0, 1e-3);
-    EXPECT_NEAR(sa.fret, 0.0, 1e-5);
+    EXPECT_NEAR(sa.get_optimal_value(), 0.0, 1e-5);
 }
 
 TEST(SimAnneal, BestPointTracked) {
@@ -484,8 +484,8 @@ TEST(SimAnneal, BestPointTracked) {
     exprmin::SimAnneal sa{f, 1.0, 0.9, 50};
     auto p = sa.minimize({0.0, 0.0}, 1.0);
 
-    const double fx = sa.eval_at(p);
-    EXPECT_NEAR(sa.fret, fx, 1e-10);
+    const double fx = sa(p);
+    EXPECT_NEAR(sa.get_optimal_value(), fx, 1e-10);
 }
 
 // ─────────────────────────────────────────────────────────────
