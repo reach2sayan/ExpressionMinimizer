@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace diff::min {
+namespace exprmin {
 
 namespace mp = boost::mp11;
 
@@ -42,11 +42,11 @@ template <typename AllSyms, typename SubSyms> consteval auto sub_indices() {
 // For each data point the expression is evaluated at the current parameter
 // vector and the given input; the Jacobian row ∂f/∂aⱼ is obtained from
 // reverse-mode AD for free.
-template <CExpression Expr,
-          typename ParamSyms = extract_symbols_from_expr_t<Expr>,
+template <diff::CExpression Expr,
+          typename ParamSyms = diff::extract_symbols_from_expr_t<Expr>,
           typename InputSyms = mp::mp_list<>>
 struct LevenbergMarquardt {
-  using AllSyms = extract_symbols_from_expr_t<Expr>;
+  using AllSyms = diff::extract_symbols_from_expr_t<Expr>;
   using value_type = typename Expr::value_type;
 
   static constexpr std::size_t N = mp::mp_size<ParamSyms>::value;
@@ -167,7 +167,7 @@ struct LevenbergMarquardt {
   }
 };
 
-template <CExpression Expr>
+template <diff::CExpression Expr>
 LevenbergMarquardt(Expr) -> LevenbergMarquardt<Expr>;
 template <CExpression Expr, typename T>
 LevenbergMarquardt(Expr, T) -> LevenbergMarquardt<Expr>;
@@ -175,6 +175,6 @@ LevenbergMarquardt(Expr, T) -> LevenbergMarquardt<Expr>;
 // Convenience alias for the common case where all symbols are parameters
 // (no explicit input variable — user bakes x_i into separate expressions
 //  or uses a single-variable expression).
-template <CExpression Expr> using LM = LevenbergMarquardt<Expr>;
+template <diff::CExpression Expr> using LM = LevenbergMarquardt<Expr>;
 
-} // namespace diff::min
+} // namespace exprmin

@@ -8,7 +8,7 @@
 #include <boost/mp11/list.hpp>
 #include <ranges>
 
-namespace diff::min {
+namespace exprmin {
 
 namespace mp = boost::mp11;
 
@@ -129,4 +129,4 @@ private:
 template <diff::CExpression Expr> Amoeba(Expr) -> Amoeba<Expr>;
 template <diff::CExpression Expr, typename T> Amoeba(Expr, T) -> Amoeba<Expr>;
 
-} // namespace diff::min
+} // namespace exprmin

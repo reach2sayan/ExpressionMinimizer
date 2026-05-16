@@ -7,7 +7,7 @@
 #include "traits.hpp"
 #include <boost/mp11/list.hpp>
 
-namespace diff::min {
+namespace exprmin {
 
 namespace mp = boost::mp11;
 
@@ -49,4 +49,4 @@ template <diff::CExpression Expr> struct Bracketmethod {
 
 template <diff::CExpression Expr> Bracketmethod(Expr) -> Bracketmethod<Expr>;
 
-} // namespace diff::min
+} // namespace exprmin

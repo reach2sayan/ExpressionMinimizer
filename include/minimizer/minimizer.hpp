@@ -9,3 +9,4 @@
 #include "amoeba.hpp"
 #include "anneal.hpp"
 #include "levmar.hpp"
+#include "auglag.hpp"

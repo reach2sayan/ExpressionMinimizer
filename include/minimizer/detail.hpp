@@ -8,7 +8,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace diff::min::detail {
+namespace exprmin::detail {
 
 // Build an (N+1)-vertex simplex: s[0]=p, s[i+1]=p with s[i+1][i]+=delta
 template <typename T, int N>
@@ -265,4 +265,4 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
   return x;
 }
 
-} // namespace diff::min::detail
+} // namespace exprmin::detail

@@ -5,7 +5,7 @@
 #include "gradient.hpp"
 #include <limits>
 
-namespace diff::min {
+namespace exprmin {
 
 // NR §10.3 — Brent's method: parabolic interpolation with golden-section fallback.
 template <diff::CExpression Expr>
@@ -82,4 +82,4 @@ struct Dbrent : Brent<Expr> {
 template <diff::CExpression Expr> Dbrent(Expr) -> Dbrent<Expr>;
 template <diff::CExpression Expr, typename T> Dbrent(Expr, T) -> Dbrent<Expr>;
 
-} // namespace diff::min
+} // namespace exprmin

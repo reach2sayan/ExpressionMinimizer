@@ -18,7 +18,7 @@ TEST(Bracketmethod, QuadraticBrackets) {
     auto x   = diff::Variable<double, 'x'>{0.0};
     auto f   = (x - diff::Constant<double>{3.0}) * (x - diff::Constant<double>{3.0});
 
-    diff::min::Bracketmethod bm{f};
+    exprmin::Bracketmethod bm{f};
     bm.bracket(0.0, 1.0);
 
     // After bracketing, bx must be strictly between ax and cx with f(bx) < f(ax) and f(bx) < f(cx)
@@ -39,7 +39,7 @@ TEST(Bracketmethod, SingleCycleConverges) {
            + diff::Constant<double>{60.0} * x * x
            - diff::Constant<double>{70.0} * x;
 
-    diff::min::Bracketmethod bm{f};
+    exprmin::Bracketmethod bm{f};
     EXPECT_NO_THROW(bm.bracket(0.0, 1.0));
     EXPECT_LT(bm.fb, bm.fa);
     EXPECT_LT(bm.fb, bm.fc);
@@ -54,7 +54,7 @@ TEST(Golden, QuadraticMinimum) {
     auto x = diff::Variable<double, 'x'>{0.0};
     auto f = (x - diff::Constant<double>{2.0}) * (x - diff::Constant<double>{2.0});
 
-    diff::min::Golden golden{f};
+    exprmin::Golden golden{f};
     double xmin = golden.minimize(0.0, 5.0);
 
     EXPECT_NEAR(xmin,         2.0, kTol);
@@ -69,7 +69,7 @@ TEST(Golden, SineMinimum) {
     auto y = diff::Variable<double, 'y'>{0.0};
     auto f = sin(y);
 
-    diff::min::Golden g{f};
+    exprmin::Golden g{f};
     g.ax = 3.0;
     g.bx = std::numbers::pi * 1.5;   // known minimum — satisfies f(bx) < f(ax,cx)
     g.cx = 6.0;
@@ -88,7 +88,7 @@ TEST(Golden, NegativeQuadratic) {
     auto x = diff::Variable<double, 'x'>{0.0};
     auto f = (x + diff::Constant<double>{1.0}) * (x + diff::Constant<double>{1.0});
 
-    diff::min::Golden g{f};
+    exprmin::Golden g{f};
     double xmin = g.minimize(-3.0, 2.0);
 
     EXPECT_NEAR(xmin,  -1.0, kTol);
@@ -100,7 +100,7 @@ TEST(Golden, CustomTolerance) {
     auto x = diff::Variable<double, 'x'>{0.0};
     auto f = (x - diff::Constant<double>{7.5}) * (x - diff::Constant<double>{7.5});
 
-    diff::min::Golden g{f, 1.0e-10};
+    exprmin::Golden g{f, 1.0e-10};
     double xmin = g.minimize(5.0, 10.0);
 
     EXPECT_NEAR(xmin, 7.5, 1e-7);
@@ -111,7 +111,7 @@ TEST(Golden, ManualBracketThenMinimize) {
     auto x = diff::Variable<double, 'x'>{0.0};
     auto f = (x - diff::Constant<double>{4.0}) * (x - diff::Constant<double>{4.0});
 
-    diff::min::Golden g{f};
+    exprmin::Golden g{f};
     g.bracket(2.0, 3.0);   // bracket first
     double xmin = g.minimize();  // then minimize
 
@@ -126,7 +126,7 @@ TEST(Brent, QuadraticMinimum) {
     auto x = diff::Variable<double, 'x'>{0.0};
     auto f = (x - diff::Constant<double>{2.0}) * (x - diff::Constant<double>{2.0});
 
-    diff::min::Brent b{f};
+    exprmin::Brent b{f};
     double xmin = b.minimize(0.0, 5.0);
 
     EXPECT_NEAR(xmin,   2.0, kTol);
@@ -137,7 +137,7 @@ TEST(Brent, SineMinimum) {
     auto y = diff::Variable<double, 'y'>{0.0};
     auto f = sin(y);
 
-    diff::min::Brent b{f};
+    exprmin::Brent b{f};
     b.ax = 3.0; b.bx = std::numbers::pi * 1.5; b.cx = 6.0;
     b.fa = b.eval_at(b.ax); b.fb = b.eval_at(b.bx); b.fc = b.eval_at(b.cx);
     double xmin = b.minimize();
@@ -152,7 +152,7 @@ TEST(Brent, QuarticMinimum) {
     auto d = x - diff::Constant<double>{1.0};
     auto f = d * d * d * d;
 
-    diff::min::Brent b{f};
+    exprmin::Brent b{f};
     double xmin = b.minimize(0.0, 3.0);
 
     EXPECT_NEAR(xmin,   1.0, kTol);
@@ -171,7 +171,7 @@ TEST(LinMin, AxisDirection) {
     auto f = (x - diff::Constant<double>{3.0}) * (x - diff::Constant<double>{3.0})
            + (y - diff::Constant<double>{4.0}) * (y - diff::Constant<double>{4.0});
 
-    diff::min::LinMin lm{f};
+    exprmin::LinMin lm{f};
     Eigen::Vector2d p{0.0, 0.0};
     Eigen::Vector2d dir{1.0, 0.0};
     lm.minimize(p, dir);
@@ -189,7 +189,7 @@ TEST(LinMin, DiagonalDirection) {
     auto f = (x - diff::Constant<double>{3.0}) * (x - diff::Constant<double>{3.0})
            + (y - diff::Constant<double>{4.0}) * (y - diff::Constant<double>{4.0});
 
-    diff::min::LinMin lm{f};
+    exprmin::LinMin lm{f};
     Eigen::Vector2d p{0.0, 0.0};
     Eigen::Vector2d dir{1.0, 1.0};
     lm.minimize(p, dir);
@@ -206,7 +206,7 @@ TEST(LinMin, DirScaledByStep) {
     auto f = (x - diff::Constant<double>{3.0}) * (x - diff::Constant<double>{3.0})
            + (y - diff::Constant<double>{4.0}) * (y - diff::Constant<double>{4.0});
 
-    diff::min::LinMin lm{f};
+    exprmin::LinMin lm{f};
     Eigen::Vector2d p{0.0, 0.0};
     Eigen::Vector2d dir{1.0, 1.0};
     lm.minimize(p, dir);
@@ -227,7 +227,7 @@ TEST(Powell, Bowl2D) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::Powell pw{f};
+    exprmin::Powell pw{f};
     auto p = pw.minimize({0.0, 0.0});
 
     EXPECT_NEAR(p[0],   1.0, kTol);
@@ -243,7 +243,7 @@ TEST(Powell, Rosenbrock) {
     auto t2 = y - x * x;
     auto f  = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
 
-    diff::min::Powell pw{f, 1e-10};
+    exprmin::Powell pw{f, 1e-10};
     auto p = pw.minimize({-1.0, 1.0});
 
     EXPECT_NEAR(p[0],    1.0, 1e-4);
@@ -261,7 +261,7 @@ TEST(Frprmn, Bowl2D) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::Frprmn cg{f};
+    exprmin::Frprmn cg{f};
     auto p = cg.minimize({0.0, 0.0});
 
     EXPECT_NEAR(p[0],    1.0, kTol);
@@ -276,7 +276,7 @@ TEST(Frprmn, Rosenbrock) {
     auto t2 = y - x * x;
     auto f  = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
 
-    diff::min::Frprmn cg{f, 1e-10};
+    exprmin::Frprmn cg{f, 1e-10};
     auto p = cg.minimize({-1.0, 1.0});
 
     EXPECT_NEAR(p[0],    1.0, 1e-4);
@@ -292,7 +292,7 @@ TEST(Frprmn, Quadratic3D) {
            + diff::Constant<double>{2.0} * y * y
            + diff::Constant<double>{3.0} * z * z;
 
-    diff::min::Frprmn cg{f};
+    exprmin::Frprmn cg{f};
     auto p = cg.minimize({3.0, 3.0, 3.0});
 
     EXPECT_NEAR(p[0],    0.0, kTol);
@@ -307,7 +307,7 @@ TEST(Frprmn, FletcherReeves) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::Frprmn<decltype(f), diff::min::CGMethod::FletcherReeves> cg{f};
+    exprmin::Frprmn<decltype(f), exprmin::CGMethod::FletcherReeves> cg{f};
     auto p = cg.minimize({0.0, 0.0});
 
     EXPECT_NEAR(p[0], 1.0, kTol);
@@ -324,7 +324,7 @@ TEST(BFGS, Bowl2D) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::BFGS bfgs{f};
+    exprmin::BFGS bfgs{f};
     auto p = bfgs.minimize({0.0, 0.0});
 
     EXPECT_NEAR(p[0],      1.0, kTol);
@@ -339,7 +339,7 @@ TEST(BFGS, Rosenbrock) {
     auto t2 = y - x * x;
     auto f  = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
 
-    diff::min::BFGS bfgs{f, 1e-10};
+    exprmin::BFGS bfgs{f, 1e-10};
     auto p = bfgs.minimize({-1.0, 1.0});
 
     EXPECT_NEAR(p[0],      1.0, 1e-4);
@@ -355,7 +355,7 @@ TEST(BFGS, Quadratic3D) {
            + diff::Constant<double>{2.0} * y * y
            + diff::Constant<double>{3.0} * z * z;
 
-    diff::min::BFGS bfgs{f};
+    exprmin::BFGS bfgs{f};
     auto p = bfgs.minimize({3.0, 3.0, 3.0});
 
     EXPECT_NEAR(p[0],      0.0, kTol);
@@ -374,7 +374,7 @@ TEST(Amoeba, Bowl2D) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::Amoeba am{f};
+    exprmin::Amoeba am{f};
     // (0,0)+delta=1 puts vertices on the same f=5 contour → false convergence;
     // (2,0) avoids that degeneracy.
     auto p = am.minimize({2.0, 0.0}, 1.0);
@@ -391,7 +391,7 @@ TEST(Amoeba, Rosenbrock) {
     auto t2 = y - x * x;
     auto f  = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
 
-    diff::min::Amoeba am{f, 1e-8};
+    exprmin::Amoeba am{f, 1e-8};
     auto p = am.minimize({-1.0, 1.0}, 0.5);
 
     EXPECT_NEAR(p[0],    1.0, 1e-3);
@@ -407,7 +407,7 @@ TEST(Amoeba, Quadratic3D) {
            + diff::Constant<double>{2.0} * y * y
            + diff::Constant<double>{3.0} * z * z;
 
-    diff::min::Amoeba am{f};
+    exprmin::Amoeba am{f};
     auto p = am.minimize({3.0, 3.0, 3.0}, 1.0);
 
     EXPECT_NEAR(p[0],    0.0, 1e-4);
@@ -431,7 +431,7 @@ TEST(SimAnneal, Bowl2D) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::SimAnneal sa{f, 1.0, 0.95, 20};
+    exprmin::SimAnneal sa{f, 1.0, 0.95, 20};
     auto p = sa.minimize({3.0, 0.0}, 1.0);
 
     EXPECT_NEAR(p[0],    1.0, 1e-3);
@@ -448,7 +448,7 @@ TEST(SimAnneal, Rosenbrock) {
     auto t2 = y - x * x;
     auto f  = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
 
-    diff::min::SimAnneal sa{f, 10.0, 0.97, 30};
+    exprmin::SimAnneal sa{f, 10.0, 0.97, 30};
     auto p = sa.minimize({-1.0, 1.0}, 0.5);
 
     EXPECT_NEAR(p[0],    1.0, 1e-2);
@@ -465,7 +465,7 @@ TEST(SimAnneal, Quadratic3D) {
            + diff::Constant<double>{2.0} * y * y
            + diff::Constant<double>{3.0} * z * z;
 
-    diff::min::SimAnneal sa{f, 2.0, 0.95, 30};
+    exprmin::SimAnneal sa{f, 2.0, 0.95, 30};
     auto p = sa.minimize({3.0, 3.0, 3.0}, 1.0);
 
     EXPECT_NEAR(p[0],    0.0, 1e-3);
@@ -481,7 +481,7 @@ TEST(SimAnneal, BestPointTracked) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::SimAnneal sa{f, 1.0, 0.9, 50};
+    exprmin::SimAnneal sa{f, 1.0, 0.9, 50};
     auto p = sa.minimize({0.0, 0.0}, 1.0);
 
     const double fx = sa.eval_at(p);
@@ -510,7 +510,7 @@ TEST(Dbrent, QuadraticMinimum) {
     auto x = diff::Variable<double, 'x'>{0.0};
     auto f = (x - diff::Constant<double>{2.0}) * (x - diff::Constant<double>{2.0});
 
-    diff::min::Dbrent db{f};
+    exprmin::Dbrent db{f};
     double xmin = db.minimize(0.0, 5.0);
 
     EXPECT_NEAR(xmin,   2.0, kTol);
@@ -521,7 +521,7 @@ TEST(Dbrent, SineMinimum) {
     auto y = diff::Variable<double, 'y'>{0.0};
     auto f = sin(y);
 
-    diff::min::Dbrent db{f};
+    exprmin::Dbrent db{f};
     db.ax = 3.0; db.bx = std::numbers::pi * 1.5; db.cx = 6.0;
     db.fa = db.eval_at(db.ax); db.fb = db.eval_at(db.bx); db.fc = db.eval_at(db.cx);
     double xmin = db.minimize();
@@ -535,7 +535,7 @@ TEST(Dbrent, QuarticMinimum) {
     auto d = x - diff::Constant<double>{1.0};
     auto f = d * d * d * d;
 
-    diff::min::Dbrent db{f};
+    exprmin::Dbrent db{f};
     double xmin = db.minimize(0.0, 3.0);
 
     EXPECT_NEAR(xmin,    1.0, kTol);
@@ -552,7 +552,7 @@ TEST(DFrprmn, Bowl2D) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::DFrprmn<decltype(f)> cg{f};
+    exprmin::DFrprmn<decltype(f)> cg{f};
     auto p = cg.minimize({0.0, 0.0});
 
     EXPECT_NEAR(p[0],    1.0, kTol);
@@ -567,7 +567,7 @@ TEST(DFrprmn, Rosenbrock) {
     auto t2 = y - x * x;
     auto f  = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
 
-    diff::min::DFrprmn<decltype(f)> cg{f, 1e-10};
+    exprmin::DFrprmn<decltype(f)> cg{f, 1e-10};
     auto p = cg.minimize({-1.0, 1.0});
 
     EXPECT_NEAR(p[0],    1.0, 1e-4);
@@ -583,7 +583,7 @@ TEST(DFrprmn, Quadratic3D) {
            + diff::Constant<double>{2.0} * y * y
            + diff::Constant<double>{3.0} * z * z;
 
-    diff::min::DFrprmn<decltype(f)> cg{f};
+    exprmin::DFrprmn<decltype(f)> cg{f};
     auto p = cg.minimize({3.0, 3.0, 3.0});
 
     EXPECT_NEAR(p[0],    0.0, kTol);
@@ -598,7 +598,7 @@ TEST(DFrprmn, FletcherReeves) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::DFrprmn<decltype(f), diff::min::CGMethod::FletcherReeves> cg{f};
+    exprmin::DFrprmn<decltype(f), exprmin::CGMethod::FletcherReeves> cg{f};
     auto p = cg.minimize({0.0, 0.0});
 
     EXPECT_NEAR(p[0], 1.0, kTol);
@@ -615,7 +615,7 @@ TEST(DBFGS, Bowl2D) {
     auto f = (x - diff::Constant<double>{1.0}) * (x - diff::Constant<double>{1.0})
            + (y - diff::Constant<double>{2.0}) * (y - diff::Constant<double>{2.0});
 
-    diff::min::DBFGS<decltype(f)> bfgs{f};
+    exprmin::DBFGS<decltype(f)> bfgs{f};
     auto p = bfgs.minimize({0.0, 0.0});
 
     EXPECT_NEAR(p[0],      1.0, kTol);
@@ -630,7 +630,7 @@ TEST(DBFGS, Rosenbrock) {
     auto t2 = y - x * x;
     auto f  = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
 
-    diff::min::DBFGS<decltype(f)> bfgs{f, 1e-10};
+    exprmin::DBFGS<decltype(f)> bfgs{f, 1e-10};
     auto p = bfgs.minimize({-1.0, 1.0});
 
     EXPECT_NEAR(p[0],      1.0, 1e-4);
@@ -646,7 +646,7 @@ TEST(DBFGS, Quadratic3D) {
            + diff::Constant<double>{2.0} * y * y
            + diff::Constant<double>{3.0} * z * z;
 
-    diff::min::DBFGS<decltype(f)> bfgs{f};
+    exprmin::DBFGS<decltype(f)> bfgs{f};
     auto p = bfgs.minimize({3.0, 3.0, 3.0});
 
     EXPECT_NEAR(p[0],      0.0, kTol);
@@ -679,7 +679,7 @@ TEST(LevenbergMarquardt, LinearModel) {
 
     using ParamSyms = sym_list<'a', 'b'>;
     using InputSyms = sym_list<'x'>;
-    diff::min::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
+    exprmin::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
 
     std::vector<decltype(lm)::DataPoint> data;
     for (int i = 0; i < 10; ++i) {
@@ -703,7 +703,7 @@ TEST(LevenbergMarquardt, ExponentialDecay) {
 
     using ParamSyms = sym_list<'a', 'b'>;
     using InputSyms = sym_list<'x'>;
-    diff::min::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
+    exprmin::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
 
     std::vector<decltype(lm)::DataPoint> data;
     for (int i = 0; i < 15; ++i) {
@@ -729,7 +729,7 @@ TEST(LevenbergMarquardt, Gaussian) {
 
     using ParamSyms = sym_list<'a', 'b', 'c'>;
     using InputSyms = sym_list<'x'>;
-    diff::min::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
+    exprmin::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
 
     std::vector<decltype(lm)::DataPoint> data;
     for (int i = 0; i < 20; ++i) {
@@ -752,7 +752,7 @@ TEST(LevenbergMarquardt, NoInputVarSingleParam) {
     auto a = diff::Variable<double, 'a'>{0.0};
     auto model = a + diff::Constant<double>{0.0}; // wrap to ensure CExpression
 
-    using LMT = diff::min::LevenbergMarquardt<decltype(model)>;
+    using LMT = exprmin::LevenbergMarquardt<decltype(model)>;
     LMT lm{model};
 
     std::vector<LMT::DataPoint> data;
@@ -762,4 +762,58 @@ TEST(LevenbergMarquardt, NoInputVarSingleParam) {
     auto p = lm.fit(LMT::ParamVec{0.0}, data);
 
     EXPECT_NEAR(p[0], 5.0, 1e-6); // mean of {3,4,5,6,7}
+}
+
+// ─────────────────────────────────────────────────────────────
+// AugLag (Augmented Lagrangian) tests
+// ─────────────────────────────────────────────────────────────
+
+TEST(AugLag, EqualityConstrained) {
+    // min x²+y²  s.t.  x+y−1 = 0
+    // Analytic: x=y=0.5, f=0.5
+    auto x = diff::Variable<double, 'x'>{0.0};
+    auto y = diff::Variable<double, 'y'>{0.0};
+    auto f = x * x + y * y;
+    auto h = x + y - diff::Constant<double>{1.0};
+
+    exprmin::AugLag al{f, exprmin::make_eq(h), std::tuple{}};
+    auto p = al.minimize({2.0, 2.0});
+
+    EXPECT_NEAR(p[0],    0.5, 1e-4);
+    EXPECT_NEAR(p[1],    0.5, 1e-4);
+    EXPECT_NEAR(al.fret, 0.5, 1e-4);
+}
+
+TEST(AugLag, InequalityConstrained) {
+    // min (x−3)²+(y−3)²  s.t.  x+y−4 ≤ 0
+    // Unconstrained min at (3,3) violates x+y≤4; active-constraint min at x=y=2, f=2
+    auto x = diff::Variable<double, 'x'>{0.0};
+    auto y = diff::Variable<double, 'y'>{0.0};
+    auto f = (x - diff::Constant<double>{3.0}) * (x - diff::Constant<double>{3.0})
+           + (y - diff::Constant<double>{3.0}) * (y - diff::Constant<double>{3.0});
+    auto g = x + y - diff::Constant<double>{4.0};
+
+    exprmin::AugLag al{f, std::tuple{}, exprmin::make_ineq(g)};
+    auto p = al.minimize({0.0, 0.0});
+
+    EXPECT_NEAR(p[0],    2.0, 1e-3);
+    EXPECT_NEAR(p[1],    2.0, 1e-3);
+    EXPECT_NEAR(al.fret, 2.0, 1e-3);
+}
+
+TEST(AugLag, BothConstraints) {
+    // min x²+y²  s.t.  x−y = 0  (equality)  and  1−x−y ≤ 0  (inequality: x+y≥1)
+    // Analytic: x=y=0.5, f=0.5
+    auto x = diff::Variable<double, 'x'>{0.0};
+    auto y = diff::Variable<double, 'y'>{0.0};
+    auto f  = x * x + y * y;
+    auto h  = x - y;                                                   // x=y
+    auto g  = diff::Constant<double>{1.0} - x - y;                    // x+y≥1
+
+    exprmin::AugLag al{f, exprmin::make_eq(h), exprmin::make_ineq(g)};
+    auto p = al.minimize({2.0, 0.0});
+
+    EXPECT_NEAR(p[0],    0.5, 1e-3);
+    EXPECT_NEAR(p[1],    0.5, 1e-3);
+    EXPECT_NEAR(al.fret, 0.5, 1e-3);
 }
