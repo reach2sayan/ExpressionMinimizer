@@ -4,7 +4,6 @@
 #include "expressions.hpp"
 #include "traits.hpp"
 #include <Eigen/Dense>
-#include <array>
 #include <boost/mp11/list.hpp>
 #include <ranges>
 
@@ -18,18 +17,21 @@ namespace mp = boost::mp11;
 // progressively shrinking it toward the minimum via reflection, expansion,
 // and contraction moves.  No line search; no gradient required.
 //
+// Simplex is stored as an N×(N+1) Eigen matrix; each column is a vertex.
+// FVals is an Eigen vector of length N+1 storing f at each vertex.
+//
 // amotry convention (NR §10.4):  psum = sum of all N+1 vertices; fac=-1
 // reflects, fac=2 expands, fac=0.5 contracts.  Derivation:
-//   centroid c = (psum − s[ihi]) / N
-//   ptry = psum·fac1 − s[ihi]·fac2,  fac1=(1−fac)/N, fac2=fac1−fac
-// which gives ptry = c + fac·(c − s[ihi]) for each sign of fac.
+//   centroid c = (psum − s.col(ihi)) / N
+//   ptry = psum·fac1 − s.col(ihi)·fac2,  fac1=(1−fac)/N, fac2=fac1−fac
+// which gives ptry = c + fac·(c − s.col(ihi)) for each sign of fac.
 template <diff::CExpression Expr> struct Amoeba {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
-  using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
-  using Simplex = std::array<Point, N + 1>;
-  using FVals = std::array<value_type, N + 1>;
+  using Point   = Eigen::Vector<value_type, static_cast<int>(N)>;
+  using Simplex = Eigen::Matrix<value_type, static_cast<int>(N), static_cast<int>(N + 1)>;
+  using FVals   = Eigen::Vector<value_type, static_cast<int>(N + 1)>;
 
   static constexpr value_type TINY{1.0e-10};
   static constexpr int ITMAX = 5000;
@@ -54,17 +56,15 @@ template <diff::CExpression Expr> struct Amoeba {
 
   Point minimize(Simplex s) {
     FVals y;
-    for (auto &&[yi, si] : std::views::zip(y, s))
-      yi = eval_at(si);
+    for (auto i : std::views::iota(0uz, N + 1))
+      y[i] = eval_at(s.col(i));
 
-    Point psum = Point::Zero();
-    for (const auto &si : s)
-      psum += si;
+    Point psum = s.rowwise().sum();
 
     for (iter = 0; iter < ITMAX; ++iter) {
       // Indices of best (ilo), worst (ihi), second-worst (inhi)
-      const std::size_t ilo =
-          static_cast<std::size_t>(std::ranges::min_element(y) - y.begin());
+      Eigen::Index ilo_idx; y.minCoeff(&ilo_idx);
+      const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
 
       std::size_t ihi = (y[0] > y[1]) ? 0uz : 1uz;
       std::size_t inhi = 1uz - ihi;
@@ -82,7 +82,7 @@ template <diff::CExpression Expr> struct Amoeba {
               (std::abs(y[ihi]) + std::abs(y[ilo]) + TINY) <
           ftol) {
         fret = y[ilo];
-        return s[ilo];
+        return s.col(ilo);
       }
 
       value_type ytry = amotry(s, y, psum, ihi, value_type{-1});
@@ -93,21 +93,19 @@ template <diff::CExpression Expr> struct Amoeba {
         ytry = amotry(s, y, psum, ihi, value_type{0.5});
         if (ytry >= ysave) {
           // Contraction failed — shrink whole simplex toward best
-          for (auto [i, si] : std::views::enumerate(s)) {
+          for (auto i : std::views::iota(0uz, N + 1)) {
             if (i != ilo) {
-              si = value_type{0.5} * (si + s[ilo]);
-              y[i] = eval_at(si);
+              s.col(i) = value_type{0.5} * (s.col(i) + s.col(ilo));
+              y[i] = eval_at(s.col(i));
             }
           }
-          psum = Point::Zero();
-          for (const auto &si : s)
-            psum += si;
+          psum = s.rowwise().sum();
         }
       }
     }
-    const auto ilo_it = std::ranges::min_element(y);
-    fret = *ilo_it;
-    return s[static_cast<std::size_t>(ilo_it - y.begin())];
+    Eigen::Index ilo_idx; y.minCoeff(&ilo_idx);
+    fret = y[ilo_idx];
+    return s.col(ilo_idx);
   }
 
 private:
@@ -115,11 +113,11 @@ private:
                     const std::size_t ihi, const value_type &fac) {
     const value_type fac1 = (value_type{1} - fac) / static_cast<value_type>(N);
     const value_type fac2 = fac1 - fac;
-    const Point ptry = fac1 * psum - fac2 * s[ihi];
+    const Point ptry = fac1 * psum - fac2 * s.col(ihi);
     const value_type ytry = eval_at(ptry);
     if (ytry < y[ihi]) {
-      psum += ptry - s[ihi];
-      s[ihi] = ptry;
+      psum += ptry - s.col(ihi);
+      s.col(ihi) = ptry;
       y[ihi] = ytry;
     }
     return ytry;

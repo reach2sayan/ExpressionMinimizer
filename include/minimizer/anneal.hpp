@@ -4,7 +4,6 @@
 #include "expressions.hpp"
 #include "traits.hpp"
 #include <Eigen/Dense>
-#include <array>
 #include <boost/mp11/list.hpp>
 #include <cmath>
 #include <limits>
@@ -31,8 +30,9 @@ template <diff::CExpression Expr> struct SimAnneal {
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
   using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
-  using Simplex = std::array<Point, N + 1>;
-  using FVals = std::array<value_type, N + 1>;
+  using Simplex =
+      Eigen::Matrix<value_type, static_cast<int>(N), static_cast<int>(N + 1)>;
+  using FVals = Eigen::Vector<value_type, static_cast<int>(N + 1)>;
 
   static constexpr value_type TINY{1.0e-10};
   static constexpr int NMAX = 200'000;
@@ -73,32 +73,30 @@ template <diff::CExpression Expr> struct SimAnneal {
     };
 
     // ── Hot SA phase ──────────────────────────────────────────────────────
-    FVals y{}, yy{};
+    FVals y, yy;
     for (auto i : std::views::iota(0uz, N + 1)) {
-      y[i] = eval_at(s[i]);
+      y[i] = eval_at(s.col(i));
       yy[i] = y[i] + bolt();
     }
 
-    std::size_t ib =
-        static_cast<std::size_t>(std::ranges::min_element(y) - y.begin());
+    Eigen::Index ib_idx;
+    y.minCoeff(&ib_idx);
+    std::size_t ib = static_cast<std::size_t>(ib_idx);
     value_type ybest = y[ib];
-    Point pbest = s[ib];
+    Point pbest = s.col(ib);
 
-    Point psum = Point::Zero();
-    for (const auto &si : s) {
-      psum += si;
-    }
+    Point psum = s.rowwise().sum();
 
     for (iter = 0; iter < NMAX && temperature > TINY; ++iter) {
       if (iter > 0 && iter % epoch_steps == 0) {
         temperature *= cooling;
-        for (std::size_t k = 0; k <= N; ++k) {
-          yy[k] = y[k] + bolt();
-        }
+        yy = Eigen::VectorXd::NullaryExpr(
+            y.size(), [&](Eigen::Index i) { return y[i] + bolt(); });
       }
 
-      const std::size_t ilo =
-          static_cast<std::size_t>(std::ranges::min_element(yy) - yy.begin());
+      Eigen::Index ilo_idx;
+      yy.minCoeff(&ilo_idx);
+      const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
       std::size_t ihi = (yy[0] > yy[1]) ? 0uz : 1uz;
       std::size_t inhi = 1uz - ihi;
       for (auto i : std::views::iota(2uz, N + 1)) {
@@ -113,7 +111,7 @@ template <diff::CExpression Expr> struct SimAnneal {
       for (auto i : std::views::iota(0uz, N + 1)) {
         if (y[i] < ybest) {
           ybest = y[i];
-          pbest = s[i];
+          pbest = s.col(i);
         }
       }
 
@@ -128,14 +126,11 @@ template <diff::CExpression Expr> struct SimAnneal {
             if (k == ilo) {
               continue;
             }
-            s[k] = value_type{0.5} * (s[k] + s[ilo]);
-            y[k] = eval_at(s[k]);
+            s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
+            y[k] = eval_at(s.col(k));
             yy[k] = y[k] + bolt();
           }
-          psum = Point::Zero();
-          for (const auto &si : s) {
-            psum += si;
-          }
+          psum = s.rowwise().sum();
         }
       }
     }
@@ -144,17 +139,16 @@ template <diff::CExpression Expr> struct SimAnneal {
     // Rebuild a fresh, non-degenerate simplex at pbest to avoid the
     // collapsed-simplex false-convergence that the hot phase can cause.
     s = detail::make_simplex(pbest, cold_delta);
-    for (auto i : std::views::iota(0uz, N + 1))
-      y[i] = eval_at(s[i]);
+    y.resize(N + 1);
+    y = y.NullaryExpr(N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
 
-    psum = Point::Zero();
-    for (const auto &si : s)
-      psum += si;
+    psum = s.rowwise().sum();
 
     static constexpr value_type ATINY{1.0e-20};
     for (int cold = 0; cold < NMAX; ++cold, ++iter) {
-      const std::size_t ilo =
-          static_cast<std::size_t>(std::ranges::min_element(y) - y.begin());
+      Eigen::Index ilo_idx;
+      y.minCoeff(&ilo_idx);
+      const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
       std::size_t ihi = (y[0] > y[1]) ? 0uz : 1uz;
       std::size_t inhi = 1uz - ihi;
       for (auto i : std::views::iota(2uz, N + 1)) {
@@ -168,7 +162,7 @@ template <diff::CExpression Expr> struct SimAnneal {
 
       if (y[ilo] < ybest) {
         ybest = y[ilo];
-        pbest = s[ilo];
+        pbest = s.col(ilo);
       }
 
       const value_type denom = std::abs(y[ihi]) + std::abs(y[ilo]) + ATINY;
@@ -187,21 +181,20 @@ template <diff::CExpression Expr> struct SimAnneal {
             if (k == ilo) {
               continue;
             }
-            s[k] = value_type{0.5} * (s[k] + s[ilo]);
-            y[k] = eval_at(s[k]);
+            s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
+            y[k] = eval_at(s.col(k));
           }
-          psum = Point::Zero();
-          for (const auto &si : s)
-            psum += si;
+          psum = s.rowwise().sum();
         }
       }
     }
 
-    const std::size_t ilo_f =
-        static_cast<std::size_t>(std::ranges::min_element(y) - y.begin());
+    Eigen::Index ilo_f_idx;
+    y.minCoeff(&ilo_f_idx);
+    const std::size_t ilo_f = static_cast<std::size_t>(ilo_f_idx);
     if (y[ilo_f] < ybest) {
       ybest = y[ilo_f];
-      pbest = s[ilo_f];
+      pbest = s.col(ilo_f);
     }
 
     fret = ybest;
@@ -215,12 +208,12 @@ private:
                               const value_type &fac) {
     const value_type fac1 = (value_type{1} - fac) / static_cast<value_type>(N);
     const value_type fac2 = fac1 - fac;
-    const Point ptry = fac1 * psum - fac2 * s[ihi];
+    const Point ptry = fac1 * psum - fac2 * s.col(ihi);
     const value_type ytry_real = eval_at(ptry);
     const value_type ytry = ytry_real + bolt();
     if (ytry < yy[ihi]) {
-      psum += ptry - s[ihi];
-      s[ihi] = ptry;
+      psum += ptry - s.col(ihi);
+      s.col(ihi) = ptry;
       y[ihi] = ytry_real;
       yy[ihi] = ytry;
     }
@@ -232,11 +225,11 @@ private:
                                    const value_type &fac) {
     const value_type fac1 = (value_type{1} - fac) / static_cast<value_type>(N);
     const value_type fac2 = fac1 - fac;
-    const Point ptry = fac1 * psum - fac2 * s[ihi];
+    const Point ptry = fac1 * psum - fac2 * s.col(ihi);
     const value_type ytry = eval_at(ptry);
     if (ytry < y[ihi]) {
-      psum += ptry - s[ihi];
-      s[ihi] = ptry;
+      psum += ptry - s.col(ihi);
+      s.col(ihi) = ptry;
       y[ihi] = ytry;
     }
     return ytry;

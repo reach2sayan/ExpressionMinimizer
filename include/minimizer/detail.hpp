@@ -4,21 +4,19 @@
 
 #include <Eigen/Dense>
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <numbers>
 
 namespace exprmin::detail {
 
-// Build an (N+1)-vertex simplex: s[0]=p, s[i+1]=p with s[i+1][i]+=delta
+// Build an (N+1)-vertex simplex: col 0 = p, col i+1 = p with col[i+1][i] += delta.
+// Stored as an N×(N+1) Eigen matrix so each column is a Point.
 template <typename T, int N>
-std::array<Eigen::Vector<T, N>, N + 1> constexpr make_simplex(
+Eigen::Matrix<T, N, N + 1> constexpr make_simplex(
     const Eigen::Vector<T, N> &p, const T &delta) noexcept {
-  std::array<Eigen::Vector<T, N>, N + 1> s;
-  std::fill(s.begin(), s.end(), p);
-  for (int i = 0; i < N; ++i) {
-    s[i + 1][i] += delta;
-  }
+  Eigen::Matrix<T, N, N + 1> s = p.replicate(1, N + 1);
+  for (int i = 0; i < N; ++i)
+    s(i, i + 1) += delta;
   return s;
 }
 
