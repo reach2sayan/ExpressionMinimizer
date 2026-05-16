@@ -1,21 +1,20 @@
 #pragma once
 
-#include "detail.hpp"
+#include "brent.hpp"
 #include "expressions.hpp"
 #include "gradient.hpp"
 #include "traits.hpp"
 #include <Eigen/Dense>
 #include <boost/mp11/list.hpp>
-#include <limits>
 
 namespace exprmin {
 
 namespace mp = boost::mp11;
 
-// 1D line minimizer for N-dimensional expressions.
+// 1D line minimizer for N-dimensional expressions using Brent's method.
 //
 // Given a point p and direction dir in R^N, minimizes f(p + t·dir) over
-// scalar t using bracket + Brent.  After minimize(p, dir):
+// scalar t.  After minimize(p, dir):
 //   - p   is updated to the minimum point
 //   - dir is scaled by the optimal step t_min  (NR convention)
 //   - fret holds f(p_min)
@@ -25,35 +24,30 @@ template <diff::CExpression Expr> struct LinMin {
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
   using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
 
-  static constexpr value_type ZEPS =
-      std::numeric_limits<value_type>::epsilon() *
-      static_cast<value_type>(1.0e-3);
   static constexpr int ITMAX = 100;
 
-  Expr expr;
+  Brent<Expr> ls;
   value_type fret{};
   const value_type tol;
 
   constexpr explicit LinMin(Expr e,
                             value_type tol_ = static_cast<value_type>(3.0e-8))
-      : expr(std::move(e)), tol(tol_) {}
+      : ls(std::move(e), tol_), tol(tol_) {}
 
-  constexpr value_type eval_at(const Point &p) {
-    expr.update(Syms{}, p);
-    return expr.eval();
+  constexpr value_type eval_at(const Point &p) { return ls.eval_at(p); }
+
+  constexpr std::pair<value_type, Point> eval_grad(const Point &p) {
+    ls.expr.update(Syms{}, p);
+    const auto g_arr = diff::gradient<diff::DiffMode::Reverse>(ls.expr);
+    return {ls.expr.eval(), Eigen::Map<const Point>(g_arr.data())};
   }
 
   constexpr void minimize(Point &p, Eigen::Ref<Point> dir) {
-    auto f1 = [&](const value_type &t) -> value_type {
-      return eval_at(p + t * dir);
+    auto f1d = [&](value_type t) -> value_type {
+      return ls.eval_at(Point{p + t * dir});
     };
-
-    value_type ax{0}, bx{1}, cx;
-    value_type fa = f1(ax), fb = f1(bx), fc;
-    detail::bracket(f1, ax, bx, cx, fa, fb, fc);
-    const value_type xmin = detail::brent(f1, ax, bx, cx, tol, ZEPS, ITMAX);
-
-    dir *= xmin;
+    const value_type t_min = ls.minimize_fn(f1d, value_type{0}, value_type{1});
+    dir *= t_min;
     p += dir;
     fret = eval_at(p);
   }
@@ -62,45 +56,51 @@ template <diff::CExpression Expr> struct LinMin {
 template <diff::CExpression Expr> LinMin(Expr) -> LinMin<Expr>;
 template <diff::CExpression Expr, typename T> LinMin(Expr, T) -> LinMin<Expr>;
 
-// Derivative-aware line minimizer — uses detail::dbrent (secant on f′).
-// The directional derivative df/dt = ∇f(p + t·dir) · dir is computed via
-// reverse-mode AD.  Drop-in replacement for LinMin.
-template <diff::CExpression Expr> struct DLinMin : LinMin<Expr> {
-  using Base = LinMin<Expr>;
-  using Base::Base; // inherit constructors
-  using value_type = typename Base::value_type;
-  using Syms = typename Base::Syms;
-  using Point = typename Base::Point;
+// Derivative-aware line minimizer using Dbrent (secant on f′ via reverse AD).
+// Drop-in replacement for LinMin; usable as template-template arg in Frprmn.
+template <diff::CExpression Expr> struct DLinMin {
+  using value_type = typename Expr::value_type;
+  using Syms = diff::extract_symbols_from_expr_t<Expr>;
+  static constexpr std::size_t N = mp::mp_size<Syms>::value;
+  using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
+
+  static constexpr int ITMAX = 100;
+
+  Dbrent<Expr> ls;
+  value_type fret{};
+  const value_type tol;
+
+  constexpr explicit DLinMin(Expr e,
+                             value_type tol_ = static_cast<value_type>(3.0e-8))
+      : ls(std::move(e), tol_), tol(tol_) {}
+
+  constexpr value_type eval_at(const Point &p) { return ls.eval_at(p); }
+
+  constexpr std::pair<value_type, Point> eval_grad(const Point &p) {
+    ls.expr.update(Syms{}, p);
+    const auto g_arr = diff::gradient<diff::DiffMode::Reverse>(ls.expr);
+    return {ls.expr.eval(), Eigen::Map<const Point>(g_arr.data())};
+  }
 
   constexpr void minimize(Point &p, Eigen::Ref<Point> dir) {
     const Point p0 = p;
     const Point d0 = dir;
-
-    struct Funcd {
+    struct FC {
       DLinMin &self;
-      const Point &p0;
-      const Point &d0;
-      value_type operator()(value_type t) {
-        self.expr.update(Syms{}, p0 + t * d0);
-        return self.expr.eval();
+      const Point &p0_, &d0_;
+      constexpr value_type operator()(value_type t) const {
+        return self.ls.eval_at(Point{p0_ + t * d0_});
       }
-      value_type df(value_type t) {
-        self.expr.update(Syms{}, p0 + t * d0);
-        const auto g = diff::gradient<diff::DiffMode::Reverse>(self.expr);
-        return Eigen::Map<const Point>(g.data()).dot(d0);
+      constexpr value_type df(value_type t) const {
+        self.ls.expr.update(Syms{}, p0_ + t * d0_);
+        const auto g = diff::gradient<diff::DiffMode::Reverse>(self.ls.expr);
+        return Eigen::Map<const Point>(g.data()).dot(d0_);
       }
-    };
-    Funcd fc{*this, p0, d0};
-
-    value_type ax{0}, bx{1}, cx;
-    value_type fa = fc(ax), fb = fc(bx), fc_val;
-    detail::bracket(fc, ax, bx, cx, fa, fb, fc_val);
-    const value_type xmin =
-        detail::dbrent(fc, ax, bx, cx, this->tol, Base::ZEPS, Base::ITMAX);
-
-    dir *= xmin;
+    } fc{*this, p0, d0};
+    const value_type t_min = ls.minimize_fn(fc, value_type{0}, value_type{1});
+    dir *= t_min;
     p += dir;
-    this->fret = this->eval_at(p);
+    fret = eval_at(p);
   }
 };
 

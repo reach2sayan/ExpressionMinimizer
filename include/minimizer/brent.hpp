@@ -12,6 +12,9 @@ template <diff::CExpression Expr>
 struct Brent : Bracketmethod<Expr> {
   using Base = Bracketmethod<Expr>;
   using value_type = typename Base::value_type;
+  using Syms = typename Base::Syms;
+  static constexpr std::size_t N = mp::mp_size<Syms>::value;
+  using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
   using Base::ax;
   using Base::bx;
   using Base::cx;
@@ -30,16 +33,35 @@ struct Brent : Bracketmethod<Expr> {
                            value_type tol_ = static_cast<value_type>(3.0e-8))
       : Base(std::move(e)), tol(tol_) {}
 
-  constexpr value_type minimize() {
+  // N-D point evaluation — used when Brent<Expr> is owned by BFGS / LBFGS / LinMin.
+  constexpr value_type eval_at(const Point &p) {
+    this->expr.update(Syms{}, p);
+    return this->expr.eval();
+  }
+
+  // 1D-only overloads: only valid for single-variable expressions.
+  constexpr value_type minimize() requires (N == 1) {
     auto f = [this](const value_type &x) { return eval_at(x); };
     xmin = detail::brent(f, ax, bx, cx, tol, ZEPS, ITMAX);
     fmin = eval_at(xmin);
     return xmin;
   }
 
-  constexpr value_type minimize(const value_type &ax0, const value_type &bx0) {
+  constexpr value_type minimize(const value_type &ax0,
+                                const value_type &bx0) requires (N == 1) {
     bracket(ax0, bx0);
     return minimize();
+  }
+
+  // Minimize any 1D callable — used by LinMin / BFGS / LBFGS.
+  template <std::invocable<value_type> F>
+  constexpr value_type minimize_fn(F f1d, value_type ax0, value_type bx0) {
+    value_type a = ax0, b = bx0, c;
+    value_type fa = f1d(a), fb = f1d(b), fc;
+    detail::bracket(f1d, a, b, c, fa, fb, fc);
+    xmin = detail::brent(f1d, a, b, c, tol, ZEPS, ITMAX);
+    fmin = f1d(xmin);
+    return xmin;
   }
 };
 
@@ -76,6 +98,18 @@ struct Dbrent : Brent<Expr> {
   constexpr value_type minimize(const value_type &ax0, const value_type &bx0) {
     this->bracket(ax0, bx0);
     return minimize();
+  }
+
+  // Minimize any 1D callable with derivative.  FC must expose operator()(T)
+  // and df(T).  Used by DLinMin / BFGS<Dbrent> / LBFGS<Dbrent>.
+  template <typename FC>
+  constexpr value_type minimize_fn(FC fc, value_type ax0, value_type bx0) {
+    value_type a = ax0, b = bx0, c;
+    value_type fa = fc(a), fb = fc(b), fc_val;
+    detail::bracket(fc, a, b, c, fa, fb, fc_val);
+    this->xmin = detail::dbrent(fc, a, b, c, this->tol, Base::ZEPS, Base::ITMAX);
+    this->fmin = fc(this->xmin);
+    return this->xmin;
   }
 };
 
