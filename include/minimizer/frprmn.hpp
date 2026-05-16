@@ -6,7 +6,7 @@
 #include <limits>
 #include <utility>
 
-namespace diff::min {
+namespace exprmin {
 
 enum class CGMethod { FletcherReeves, PolakRibiere };
 
@@ -100,4 +100,4 @@ Frprmn(Expr, T) -> Frprmn<Expr>;
 template <diff::CExpression Expr, CGMethod Method = CGMethod::PolakRibiere>
 using DFrprmn = Frprmn<Expr, Method, DLinMin>;
 
-} // namespace diff::min
+} // namespace exprmin

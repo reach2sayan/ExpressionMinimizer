@@ -2,7 +2,7 @@
 
 #include "linmin.hpp"
 
-namespace diff::min {
+namespace exprmin {
 
 // NR §10.5 — Powell's method for N-dimensional minimization.
 //
@@ -86,4 +86,4 @@ template <diff::CExpression Expr> struct Powell {
 template <diff::CExpression Expr> Powell(Expr) -> Powell<Expr>;
 template <diff::CExpression Expr, typename T> Powell(Expr, T) -> Powell<Expr>;
 
-} // namespace diff::min
+} // namespace exprmin

@@ -3,7 +3,7 @@
 #include "bracketmethod.hpp"
 #include <cmath>
 
-namespace diff::min {
+namespace exprmin {
 
 // NR §10.2 — Golden section search built on Bracketmethod.
 //
@@ -89,4 +89,4 @@ template <diff::CExpression Expr> struct Golden : Bracketmethod<Expr> {
 template <diff::CExpression Expr> Golden(Expr) -> Golden<Expr>;
 template <diff::CExpression Expr, typename T> Golden(Expr, T) -> Golden<Expr>;
 
-} // namespace diff::min
+} // namespace exprmin

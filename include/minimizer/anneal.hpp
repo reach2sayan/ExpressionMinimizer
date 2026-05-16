@@ -11,7 +11,7 @@
 #include <random>
 #include <ranges>
 
-namespace diff::min {
+namespace exprmin {
 
 namespace mp = boost::mp11;
 
@@ -257,4 +257,4 @@ template <diff::CExpression Expr, typename T1, typename T2, typename I,
           typename T3, typename T4>
 SimAnneal(Expr, T1, T2, I, T3, T4) -> SimAnneal<Expr>;
 
-} // namespace diff::min
+} // namespace exprmin

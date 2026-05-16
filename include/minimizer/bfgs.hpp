@@ -6,7 +6,7 @@
 #include <limits>
 #include <utility>
 
-namespace diff::min {
+namespace exprmin {
 
 // NR §10.7 — BFGS quasi-Newton minimization.
 //
@@ -107,4 +107,4 @@ template <diff::CExpression Expr, typename T> BFGS(Expr, T) -> BFGS<Expr>;
 // Derivative-aware BFGS: uses Dbrent line search via DLinMin.
 template <diff::CExpression Expr> using DBFGS = BFGS<Expr, DLinMin>;
 
-} // namespace diff::min
+} // namespace exprmin

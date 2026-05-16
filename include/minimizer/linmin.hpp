@@ -8,7 +8,7 @@
 #include <boost/mp11/list.hpp>
 #include <limits>
 
-namespace diff::min {
+namespace exprmin {
 
 namespace mp = boost::mp11;
 
@@ -19,8 +19,7 @@ namespace mp = boost::mp11;
 //   - p   is updated to the minimum point
 //   - dir is scaled by the optimal step t_min  (NR convention)
 //   - fret holds f(p_min)
-template <diff::CExpression Expr>
-struct LinMin {
+template <diff::CExpression Expr> struct LinMin {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
@@ -66,8 +65,7 @@ template <diff::CExpression Expr, typename T> LinMin(Expr, T) -> LinMin<Expr>;
 // Derivative-aware line minimizer — uses detail::dbrent (secant on f′).
 // The directional derivative df/dt = ∇f(p + t·dir) · dir is computed via
 // reverse-mode AD.  Drop-in replacement for LinMin.
-template <diff::CExpression Expr>
-struct DLinMin : LinMin<Expr> {
+template <diff::CExpression Expr> struct DLinMin : LinMin<Expr> {
   using Base = LinMin<Expr>;
   using Base::Base; // inherit constructors
   using value_type = typename Base::value_type;
@@ -97,8 +95,8 @@ struct DLinMin : LinMin<Expr> {
     value_type ax{0}, bx{1}, cx;
     value_type fa = fc(ax), fb = fc(bx), fc_val;
     detail::bracket(fc, ax, bx, cx, fa, fb, fc_val);
-    const value_type xmin = detail::dbrent(fc, ax, bx, cx, this->tol,
-                                           Base::ZEPS, Base::ITMAX);
+    const value_type xmin =
+        detail::dbrent(fc, ax, bx, cx, this->tol, Base::ZEPS, Base::ITMAX);
 
     dir *= xmin;
     p += dir;
@@ -109,4 +107,4 @@ struct DLinMin : LinMin<Expr> {
 template <diff::CExpression Expr> DLinMin(Expr) -> DLinMin<Expr>;
 template <diff::CExpression Expr, typename T> DLinMin(Expr, T) -> DLinMin<Expr>;
 
-} // namespace diff::min
+} // namespace exprmin
