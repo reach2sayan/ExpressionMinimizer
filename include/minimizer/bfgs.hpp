@@ -51,7 +51,9 @@ struct BFGS {
     constexpr auto EPS = std::numeric_limits<value_type>::epsilon();
 
     Hessian hsn = Hessian::Identity();
-    auto [fp, g] = eval_grad(p);
+    auto fg0 = eval_grad(p);
+    value_type fp = fg0.first;
+    Point g = std::move(fg0.second);
     fret = fp;
     Point xi = -g;
 
@@ -59,7 +61,7 @@ struct BFGS {
       lm.minimize(p, xi); // xi ← actual step Δp;  p ← p_new
       fret = lm.fret;
 
-      auto [_, g_new] = eval_grad(p);
+      Point g_new = eval_grad(p).second;
 
       // Gradient-based convergence (NR §10.7)
       const value_type den = max(abs(fret), value_type{1});

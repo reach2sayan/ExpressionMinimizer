@@ -92,8 +92,9 @@ template <diff::CExpression Expr> struct SimAnneal {
     for (iter = 0; iter < NMAX && temperature > TINY; ++iter) {
       if (iter > 0 && iter % epoch_steps == 0) {
         temperature *= cooling;
-        for (auto &&[yyi, yi] : std::views::zip(yy, y))
-          yyi = yi + bolt();
+        for (std::size_t k = 0; k <= N; ++k) {
+          yy[k] = y[k] + bolt();
+        }
       }
 
       const std::size_t ilo =
@@ -123,16 +124,18 @@ template <diff::CExpression Expr> struct SimAnneal {
         const value_type ysave = yy[ihi];
         ytry = amotry(s, y, yy, psum, ihi, bolt, value_type{0.5});
         if (ytry >= ysave) {
-          for (auto [i, si] : std::views::enumerate(s)) {
-            if (static_cast<std::size_t>(i) != ilo) {
-              si = value_type{0.5} * (si + s[ilo]);
-              y[i] = eval_at(si);
-              yy[i] = y[i] + bolt();
+          for (std::size_t k = 0; k <= N; ++k) {
+            if (k == ilo) {
+              continue;
             }
+            s[k] = value_type{0.5} * (s[k] + s[ilo]);
+            y[k] = eval_at(s[k]);
+            yy[k] = y[k] + bolt();
           }
           psum = Point::Zero();
-          for (const auto &si : s)
+          for (const auto &si : s) {
             psum += si;
+          }
         }
       }
     }
@@ -180,11 +183,12 @@ template <diff::CExpression Expr> struct SimAnneal {
         const value_type ysave = y[ihi];
         ytry = amotry_cold(s, y, psum, ihi, value_type{0.5});
         if (ytry >= ysave) {
-          for (auto [i, si] : std::views::enumerate(s)) {
-            if (static_cast<std::size_t>(i) != ilo) {
-              si = value_type{0.5} * (si + s[ilo]);
-              y[i] = eval_at(si);
+          for (std::size_t k = 0; k <= N; ++k) {
+            if (k == ilo) {
+              continue;
             }
+            s[k] = value_type{0.5} * (s[k] + s[ilo]);
+            y[k] = eval_at(s[k]);
           }
           psum = Point::Zero();
           for (const auto &si : s)

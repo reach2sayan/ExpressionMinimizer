@@ -12,12 +12,13 @@ namespace diff::min::detail {
 
 // Build an (N+1)-vertex simplex: s[0]=p, s[i+1]=p with s[i+1][i]+=delta
 template <typename T, int N>
-std::array<Eigen::Vector<T, N>, N + 1>
-constexpr make_simplex(const Eigen::Vector<T, N> &p, const T &delta) noexcept {
+std::array<Eigen::Vector<T, N>, N + 1> constexpr make_simplex(
+    const Eigen::Vector<T, N> &p, const T &delta) noexcept {
   std::array<Eigen::Vector<T, N>, N + 1> s;
   std::fill(s.begin(), s.end(), p);
-  for (int i = 0; i < N; ++i)
+  for (int i = 0; i < N; ++i) {
     s[i + 1][i] += delta;
+  }
   return s;
 }
 
@@ -182,8 +183,8 @@ constexpr T brent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
 // Uses secant interpolation on f′; bisects toward the zero-crossing side
 // when the secant step is outside the bracket or not improving.
 template <diff::Numeric T, typename F>
-constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx,
-         const T &tol, const T &zeps, int itmax = 100) {
+constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
+                   const T &zeps, int itmax = 100) {
   using std::abs;
 
   T a = std::min(ax, cx), b = std::max(ax, cx);
@@ -193,7 +194,7 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx,
   T d{}, e{};
 
   for (int i = 0; i < itmax; ++i) {
-    const T xm   = T{0.5} * (a + b);
+    const T xm = T{0.5} * (a + b);
     const T tol1 = tol * abs(x) + zeps;
     const T tol2 = T{2} * tol1;
     if (abs(x - xm) <= tol2 - T{0.5} * (b - a))
@@ -202,16 +203,17 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx,
     if (abs(e) > tol1) {
       // Attempt secant steps using (x,w) and (x,v) pairs
       T d1 = T{2} * (b - a), d2 = d1;
-      if (dw != dx) d1 = (w - x) * dx / (dx - dw);
-      if (dv != dx) d2 = (v - x) * dx / (dx - dv);
+      if (dw != dx)
+        d1 = (w - x) * dx / (dx - dw);
+      if (dv != dx)
+        d2 = (v - x) * dx / (dx - dv);
       const T u1 = x + d1, u2 = x + d2;
       const bool ok1 = (a - u1) * (u1 - b) > T{} && dx * d1 <= T{};
       const bool ok2 = (a - u2) * (u2 - b) > T{} && dx * d2 <= T{};
       const T olde = e;
       e = d;
       if (ok1 || ok2) {
-        d = (ok1 && ok2) ? (abs(d1) < abs(d2) ? d1 : d2)
-                         : (ok1 ? d1 : d2);
+        d = (ok1 && ok2) ? (abs(d1) < abs(d2) ? d1 : d2) : (ok1 ? d1 : d2);
         if (abs(d) <= abs(T{0.5} * olde)) {
           const T u = x + d;
           if (u - a < tol2 || b - u < tol2)
@@ -229,22 +231,34 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx,
       d = T{0.5} * e;
     }
 
-    const T u  = (abs(d) >= tol1 ? x + d : x + (d >= T{} ? tol1 : -tol1));
+    const T u = (abs(d) >= tol1 ? x + d : x + (d >= T{} ? tol1 : -tol1));
     const T fu = f(u);
     const T du = f.df(u);
 
     if (fu <= fx) {
       (u < x ? b : a) = x;
-      v = w; fv = fw; dv = dw;
-      w = x; fw = fx; dw = dx;
-      x = u; fx = fu; dx = du;
+      v = w;
+      fv = fw;
+      dv = dw;
+      w = x;
+      fw = fx;
+      dw = dx;
+      x = u;
+      fx = fu;
+      dx = du;
     } else {
       (u < x ? a : b) = u;
       if (fu <= fw || w == x) {
-        v = w; fv = fw; dv = dw;
-        w = u; fw = fu; dw = du;
+        v = w;
+        fv = fw;
+        dv = dw;
+        w = u;
+        fw = fu;
+        dw = du;
       } else if (fu <= fv || v == x || v == w) {
-        v = u; fv = fu; dv = du;
+        v = u;
+        fv = fu;
+        dv = du;
       }
     }
   }

@@ -84,10 +84,12 @@ struct LevenbergMarquardt {
   constexpr AllVec make_all_vec(const ParamVec &params,
                                 const InputVec &input) const {
     AllVec v;
-    for (std::size_t j = 0; j < N; ++j)
+    for (std::size_t j = 0; j < N; ++j) {
       v[static_cast<int>(PARAM_IDX[j])] = params[static_cast<int>(j)];
-    for (std::size_t k = 0; k < K; ++k)
+    }
+    for (std::size_t k = 0; k < K; ++k) {
       v[static_cast<int>(INPUT_IDX[k])] = input[static_cast<int>(k)];
+    }
     return v;
   }
 
@@ -109,8 +111,9 @@ struct LevenbergMarquardt {
       r[i] = data[i].weight * (data[i].target - fi);
 
       const auto g = diff::gradient<DiffMode::Reverse>(expr);
-      for (std::size_t j = 0; j < N; ++j)
+      for (std::size_t j = 0; j < N; ++j) {
         J(i, static_cast<int>(j)) = -data[i].weight * g[PARAM_IDX[j]];
+      }
     }
     return std::pair{r, J};
   }
@@ -132,8 +135,9 @@ struct LevenbergMarquardt {
 
       // Marquardt damping: α = Jᵀ J + λ diag(Jᵀ J)
       NMat alpha = JtJ;
-      for (int j = 0; j < static_cast<int>(N); ++j)
+      for (int j = 0; j < static_cast<int>(N); ++j) {
         alpha(j, j) *= (value_type{1} + lambda);
+      }
 
       const NVec da = alpha.ldlt().solve(beta);
       const ParamVec p_new = params + da;
@@ -144,14 +148,11 @@ struct LevenbergMarquardt {
       if (chi2_new < chi2) {
         // Step accepted
         lambda *= LAMBDA_DOWN;
-
         // Convergence: step small relative to current params
-        if (da.norm() < ftol * (params.norm() + ftol))
+        if ((da.norm() < ftol * (params.norm() + ftol)) ||
+            (abs(chi2 - chi2_new) < ftol * (value_type{1} + chi2))) {
           return p_new;
-
-        // Convergence: chi-squared barely changed
-        if (abs(chi2 - chi2_new) < ftol * (value_type{1} + chi2))
-          return p_new;
+        }
 
         params = p_new;
         chi2 = chi2_new;
