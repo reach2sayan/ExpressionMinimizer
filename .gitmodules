@@ -1,3 +1,3 @@
 [submodule "deps/expression_differentiator"]
 	path = deps/expression_differentiator
-	url = https://github.com/reach2sayan/ExpressionSolver.git
+	url = https://github.com/reach2sayan/ExpressionDifferentiator.git
