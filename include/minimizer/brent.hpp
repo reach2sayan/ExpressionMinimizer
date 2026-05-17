@@ -94,40 +94,51 @@ template <diff::CExpression Expr> struct Dbrent : Brent<Expr> {
   using Base::fmin;
   using Base::tol;
   using Base::xmin;
-  constexpr value_type minimize() {
-    struct Funcd {
-      Dbrent &self;
-      value_type operator()(value_type t) { return self.eval_at(t); }
-      value_type df(value_type t) {
-        std::array<value_type, 1> v{t};
-        self.expr.update(Syms{}, v);
-        const auto g = diff::gradient<diff::DiffMode::Reverse>(self.expr);
-        return g[0];
-      }
-    };
-    Funcd fc{*this};
-    xmin = detail::dbrent(fc, ax, bx, cx, tol, Base::ZEPS, Base::ITMAX);
-    fmin = eval_at(xmin);
-    return xmin;
-  }
+  constexpr value_type minimize();
 
-  constexpr value_type minimize(const value_type &ax0, const value_type &bx0) {
-    bracket(ax0, bx0);
-    return minimize();
-  }
+  constexpr value_type minimize(const value_type &ax0, const value_type &bx0);
 
   // Minimize any 1D callable with derivative.  FC must expose operator()(T)
   // and df(T).  Used by DLinMin / BFGS<Dbrent> / LBFGS<Dbrent>.
   template <typename FC>
-  constexpr value_type minimize_fn(FC fc, value_type ax0, value_type bx0) {
-    value_type a = ax0, b = bx0, c;
-    value_type fa = fc(a), fb = fc(b), fc_val;
-    detail::bracket(fc, a, b, c, fa, fb, fc_val);
-    xmin = detail::dbrent(fc, a, b, c, tol, Base::ZEPS, Base::ITMAX);
-    fmin = fc(xmin);
-    return xmin;
-  }
+  constexpr value_type minimize_fn(FC fc, value_type ax0, value_type bx0);
 };
+
+template <diff::CExpression Expr>
+constexpr typename Dbrent<Expr>::value_type Dbrent<Expr>::minimize() {
+  struct Funcd {
+    Dbrent &self;
+    value_type operator()(value_type t) { return self.eval_at(t); }
+    value_type df(value_type t) {
+      std::array<value_type, 1> v{t};
+      self.expr.update(Syms{}, v);
+      const auto g = diff::gradient<diff::DiffMode::Reverse>(self.expr);
+      return g[0];
+    }
+  };
+  Funcd fc{*this};
+  xmin = detail::dbrent(fc, ax, bx, cx, tol, Base::ZEPS, Base::ITMAX);
+  fmin = eval_at(xmin);
+  return xmin;
+}
+template <diff::CExpression Expr>
+constexpr typename Dbrent<Expr>::value_type
+Dbrent<Expr>::minimize(const value_type &ax0, const value_type &bx0) {
+  bracket(ax0, bx0);
+  return minimize();
+}
+
+template <diff::CExpression Expr>
+template <typename FC>
+constexpr typename Dbrent<Expr>::value_type
+Dbrent<Expr>::minimize_fn(FC fc, value_type ax0, value_type bx0) {
+  value_type a = ax0, b = bx0, c;
+  value_type fa = fc(a), fb = fc(b), fc_val;
+  detail::bracket(fc, a, b, c, fa, fb, fc_val);
+  xmin = detail::dbrent(fc, a, b, c, tol, Base::ZEPS, Base::ITMAX);
+  fmin = fc(xmin);
+  return xmin;
+}
 
 template <diff::CExpression Expr> Dbrent(Expr) -> Dbrent<Expr>;
 template <diff::CExpression Expr, typename T> Dbrent(Expr, T) -> Dbrent<Expr>;
