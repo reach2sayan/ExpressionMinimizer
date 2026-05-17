@@ -861,3 +861,119 @@ TEST(LBFGS, Quadratic3DWithArmijo) {
   EXPECT_NEAR(p[2], 0.0, kTol);
   EXPECT_NEAR(lbfgs.get_optimal_value(), 0.0, kTol * kTol);
 }
+
+// ─────────────────────────────────────────────────────────────
+// GaussNewton tests
+// ─────────────────────────────────────────────────────────────
+
+TEST(GaussNewton, LinearModel) {
+  // f(x; a, b) = a*x + b  — true params a=2, b=3
+  auto a = diff::Variable<double, 'a'>{0.0};
+  auto b = diff::Variable<double, 'b'>{0.0};
+  auto x = diff::Variable<double, 'x'>{0.0};
+  auto model = a * x + b;
+
+  using ParamSyms = sym_list<'a', 'b'>;
+  using InputSyms = sym_list<'x'>;
+  exprmin::GaussNewton<decltype(model), ParamSyms, InputSyms> gn{model};
+
+  std::vector<decltype(gn)::DataPoint> data;
+  for (int i = 0; i < 10; ++i) {
+    double xi = static_cast<double>(i);
+    data.push_back(make_pt<decltype(gn)>(xi, 2.0 * xi + 3.0));
+  }
+
+  decltype(gn)::ParamVec p0{1.0, 1.0};
+  auto p = gn.fit(p0, data);
+
+  EXPECT_NEAR(p[0], 2.0, 1e-6); // a
+  EXPECT_NEAR(p[1], 3.0, 1e-6); // b
+}
+
+TEST(GaussNewton, ExponentialDecay) {
+  // f(x; a, b) = a * exp(-b*x)  — true params a=5, b=0.5
+  auto a = diff::Variable<double, 'a'>{0.0};
+  auto b = diff::Variable<double, 'b'>{0.0};
+  auto x = diff::Variable<double, 'x'>{0.0};
+  auto model = a * exp(-b * x);
+
+  using ParamSyms = sym_list<'a', 'b'>;
+  using InputSyms = sym_list<'x'>;
+  exprmin::GaussNewton<decltype(model), ParamSyms, InputSyms> gn{model};
+
+  std::vector<decltype(gn)::DataPoint> data;
+  for (int i = 0; i < 15; ++i) {
+    double xi = 0.2 * i;
+    data.push_back(make_pt<decltype(gn)>(xi, 5.0 * std::exp(-0.5 * xi)));
+  }
+
+  decltype(gn)::ParamVec p0{3.0, 1.0};
+  auto p = gn.fit(p0, data);
+
+  EXPECT_NEAR(p[0], 5.0, 1e-5); // a
+  EXPECT_NEAR(p[1], 0.5, 1e-5); // b
+}
+
+TEST(GaussNewton, NoInputVarSingleParam) {
+  // f(a) = a — no input variable; GN should converge to the mean of targets.
+  auto a = diff::Variable<double, 'a'>{0.0};
+  auto model = a + diff::Constant<double>{0.0};
+
+  using GNT = exprmin::GaussNewton<decltype(model)>;
+  GNT gn{model};
+
+  std::vector<GNT::DataPoint> data;
+  for (double target : {3.0, 4.0, 5.0, 6.0, 7.0})
+    data.push_back({GNT::InputVec{}, target, 1.0});
+
+  auto p = gn.fit(GNT::ParamVec{0.0}, data);
+
+  EXPECT_NEAR(p[0], 5.0, 1e-6); // mean of {3,4,5,6,7}
+}
+
+// ─────────────────────────────────────────────────────────────
+// Dogleg tests
+// ─────────────────────────────────────────────────────────────
+
+TEST(Dogleg, Bowl2D) {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  auto y = diff::Variable<double, 'y'>{0.0};
+  auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
+
+  exprmin::Dogleg dl{f};
+  auto p = dl.minimize({0.0, 0.0});
+
+  EXPECT_NEAR(p[0], 1.0, kTol);
+  EXPECT_NEAR(p[1], 2.0, kTol);
+  EXPECT_NEAR(dl.fret, 0.0, kTol * kTol);
+}
+
+TEST(Dogleg, Rosenbrock) {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  auto y = diff::Variable<double, 'y'>{0.0};
+  auto t1 = 1.0 - x;
+  auto t2 = y - x * x;
+  auto f = t1 * t1 + 100.0 * t2 * t2;
+
+  exprmin::Dogleg dl{f, 1e-10};
+  auto p = dl.minimize({-1.0, 1.0});
+
+  EXPECT_NEAR(p[0], 1.0, 1e-4);
+  EXPECT_NEAR(p[1], 1.0, 1e-4);
+  EXPECT_NEAR(dl.fret, 0.0, 1e-6);
+}
+
+TEST(Dogleg, Quadratic3D) {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  auto y = diff::Variable<double, 'y'>{0.0};
+  auto z = diff::Variable<double, 'z'>{0.0};
+  auto f = x * x + 2.0 * y * y + 3.0 * z * z;
+
+  exprmin::Dogleg dl{f};
+  auto p = dl.minimize({3.0, 3.0, 3.0});
+
+  EXPECT_NEAR(p[0], 0.0, kTol);
+  EXPECT_NEAR(p[1], 0.0, kTol);
+  EXPECT_NEAR(p[2], 0.0, kTol);
+  EXPECT_NEAR(dl.fret, 0.0, kTol * kTol);
+}

@@ -84,7 +84,6 @@ public:
   constexpr Point minimize(Point p);
 };
 
-// ── compute_step ─────────────────────────────────────────────────────────────
 template <diff::CExpression Expr>
 constexpr typename Dogleg<Expr>::StepResult
 Dogleg<Expr>::compute_step(const Point &g, const Matrix &B,
@@ -124,8 +123,6 @@ Dogleg<Expr>::compute_step(const Point &g, const Matrix &B,
   }
 }
 
-// ── update_trust_region
-// ───────────────────────────────────────────────────────
 template <diff::CExpression Expr>
 constexpr void
 Dogleg<Expr>::update_trust_region(value_type &delta, value_type rho,
@@ -139,7 +136,6 @@ Dogleg<Expr>::update_trust_region(value_type &delta, value_type rho,
   }
 }
 
-// ── update_B ─────────────────────────────────────────────────────────────────
 template <diff::CExpression Expr>
 constexpr void Dogleg<Expr>::update_B(Matrix &B, const Point &step,
                                       const Point &dg) const {
@@ -150,7 +146,6 @@ constexpr void Dogleg<Expr>::update_B(Matrix &B, const Point &step,
     B += (dg * dg.transpose()) / ys - (Bs * Bs.transpose()) / sBs;
 }
 
-// ── minimize ─────────────────────────────────────────────────────────────────
 template <diff::CExpression Expr>
 constexpr typename Dogleg<Expr>::Point Dogleg<Expr>::minimize(Point p) {
   using std::abs, std::max;
