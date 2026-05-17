@@ -90,8 +90,7 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::eval_rJ(const ParamVec &p) {
     r[0] = system.evaluate();
   } else {
     const auto r_arr = system.evaluate();
-    for (int i = 0; i < M; ++i)
-      r[i] = r_arr[static_cast<std::size_t>(i)];
+    r = Eigen::Map<const RVec>(r_arr.data());
   }
   const auto J_arr = system.template jacobian<diff::DiffMode::Reverse>();
   JMat J = Eigen::Map<
