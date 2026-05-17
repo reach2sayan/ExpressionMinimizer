@@ -146,15 +146,27 @@ auto x = diff::Variable<double, 'x'>{0.0};
 auto y = diff::Variable<double, 'y'>{0.0};
 auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
 
+// Default: BFGS Hessian approximation (rank-2 updates, no second derivatives)
 exprmin::Dogleg dl{f};
 auto p = dl.minimize({0.0, 0.0}); // p ≈ {1.0, 2.0}
 // dl.fret holds f at the returned minimum
+
+// ExactAD: full Hessian recomputed every iteration via forward-over-reverse AD
+exprmin::Dogleg<decltype(f), exprmin::HessianMode::ExactAD> dl_exact{f};
+auto p2 = dl_exact.minimize({0.0, 0.0});
 ```
 
 Each iteration picks the longest safe step from three candidates — full Newton
 (inside trust region), Cauchy (gradient descent to boundary), or the dogleg
 interpolation between them. The trust-region radius is adjusted using the
-Powell (libdogleg) ρ-ratio policy. The Hessian is approximated via BFGS.
+Powell (libdogleg) ρ-ratio policy.
+
+A compile-time `HessianMode` template parameter controls how the Hessian is supplied:
+
+| Mode | Description |
+|---|---|
+| `HessianMode::BFGS` (default) | Rank-2 BFGS updates from gradient differences — O(N²) storage, no second derivatives |
+| `HessianMode::ExactAD` | Exact Hessian via `diff::derivative_tensor<2>` each iteration — fewer iterations, costs N forward passes |
 
 ### Nonlinear least-squares (Gauss-Newton)
 
