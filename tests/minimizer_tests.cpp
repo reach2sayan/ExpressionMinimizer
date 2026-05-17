@@ -524,3 +524,84 @@ TEST(Broyden, Nonlinear3D) {
   EXPECT_NEAR(p[2], 1.0, kTol);
   EXPECT_LT(br.residual_norm(), kTol);
 }
+
+// ─── NLSDogleg ───────────────────────────────────────────────────────────────
+
+// Square 2D NLS: r1=x²+y-3, r2=x+y²-3  →  multiple roots; check any is found (residual→0)
+TEST(NLSDogleg, Square2D_Standard) {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto r1 = x * x + y - 3.0;
+  auto r2 = x + y * y - 3.0;
+  exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2)>> nd{
+      diff::Equation{r1, r2}};
+  nd.minimize({2.0, 0.0});
+  EXPECT_NEAR(nd.get_optimal_value(), 0.0, kTol * kTol);
+}
+
+TEST(NLSDogleg, Square2D_Double) {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto r1 = x * x + y - 3.0;
+  auto r2 = x + y * y - 3.0;
+  exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2)>,
+                     exprmin::DoglegVariant::Double>
+      nd{diff::Equation{r1, r2}};
+  nd.minimize({2.0, 0.0});
+  EXPECT_NEAR(nd.get_optimal_value(), 0.0, kTol * kTol);
+}
+
+// Overdetermined 3-residual: r1=x+y-2, r2=x-y, r3=x-1  →  LS sol {1,1}
+TEST(NLSDogleg, Overdetermined3r_Standard) {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto r1 = x + y - 2.0;
+  auto r2 = x - y;
+  auto r3 = x - 1.0;
+  exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2), decltype(r3)>>
+      nd{diff::Equation{r1, r2, r3}};
+  auto p = nd.minimize({0.0, 0.0});
+  EXPECT_NEAR(p[0], 1.0, kTol);
+  EXPECT_NEAR(p[1], 1.0, kTol);
+}
+
+TEST(NLSDogleg, Overdetermined3r_Double) {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto r1 = x + y - 2.0;
+  auto r2 = x - y;
+  auto r3 = x - 1.0;
+  exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2), decltype(r3)>,
+                     exprmin::DoglegVariant::Double>
+      nd{diff::Equation{r1, r2, r3}};
+  auto p = nd.minimize({0.0, 0.0});
+  EXPECT_NEAR(p[0], 1.0, kTol);
+  EXPECT_NEAR(p[1], 1.0, kTol);
+}
+
+// ─── Subspace2D ──────────────────────────────────────────────────────────────
+
+// Same multi-root system: just verify a root is found (residual→0)
+TEST(Subspace2D, Square2D) {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto r1 = x * x + y - 3.0;
+  auto r2 = x + y * y - 3.0;
+  exprmin::Subspace2D<diff::Equation<decltype(r1), decltype(r2)>> s2{
+      diff::Equation{r1, r2}};
+  s2.minimize({2.0, 0.0});
+  EXPECT_NEAR(s2.get_optimal_value(), 0.0, kTol * kTol);
+}
+
+TEST(Subspace2D, Overdetermined3r) {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto r1 = x + y - 2.0;
+  auto r2 = x - y;
+  auto r3 = x - 1.0;
+  exprmin::Subspace2D<diff::Equation<decltype(r1), decltype(r2), decltype(r3)>>
+      s2{diff::Equation{r1, r2, r3}};
+  auto p = s2.minimize({0.0, 0.0});
+  EXPECT_NEAR(p[0], 1.0, kTol);
+  EXPECT_NEAR(p[1], 1.0, kTol);
+}

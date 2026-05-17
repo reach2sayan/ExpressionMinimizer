@@ -26,6 +26,8 @@ reverse-mode automatic differentiation — no hand-coded derivatives required.
 | `Amoeba` | §10.4 | Nelder-Mead downhill simplex |
 | `SimAnneal` | §10.12 | Simulated annealing + Amoeba cold refinement |
 | `Dogleg` | Powell (1970) | Trust-region dogleg with BFGS Hessian approximation |
+| `NLSDogleg` | Powell (1970) | NLS trust-region Powell dogleg (classical + double variant) for ½‖R(θ)‖² |
+| `Subspace2D` | Kaufman (1999) | NLS trust-region 2D subspace step (quartic Lagrange multiplier) for ½‖R(θ)‖² |
 | `LevenbergMarquardt` | §15.5 | Nonlinear least-squares fitting with Marquardt damping |
 | `GaussNewton` | — | Nonlinear least-squares (undamped normal equations) |
 | `AugLag` | — | Augmented Lagrangian constrained minimization |
@@ -253,6 +255,40 @@ auto p = br.find_root({1.0, 0.5}); // p ≈ {√2, √2}
 ```
 
 Uses exact reverse-mode AD Jacobian (instead of finite differences as in GSL) for initialization and the fallback Jacobian recomputation. Each iteration applies a rank-1 Broyden update to the approximate inverse Jacobian H ≈ −J⁻¹, with Hebden backtracking on ‖F‖.
+
+### NLS trust-region (NLSDogleg / Subspace2D)
+
+Both minimize ½‖R(θ)‖² where R : ℝᴺ → ℝᴹ (M ≥ N) is given as `diff::Equation<R1,...,RM>`.
+The Gauss-Newton Hessian B = JᵀJ is recomputed from the exact AD Jacobian at each accepted step.
+
+```cpp
+auto x = PV(0.0, 'x');  auto y = PV(0.0, 'y');
+auto r1 = x * x + y - 3.0;
+auto r2 = x + y * y - 3.0;
+
+// NLSDogleg — classical Powell dogleg (Standard variant, default)
+exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2)>> nd{
+    diff::Equation{r1, r2}};
+auto p = nd.minimize({2.0, 0.0});
+nd.get_optimal_value();  // ½‖r‖² at returned point
+
+// Double dogleg variant (Dennis & Mei 1979) — scales GN step before interpolation
+exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2)>,
+                   exprmin::DoglegVariant::Double> nd2{diff::Equation{r1, r2}};
+
+// Subspace2D — minimizes quadratic model over span{Cauchy, GN} ∩ TR ball
+// Optimal subspace step found via degree-4 polynomial in Lagrange multiplier λ
+exprmin::Subspace2D<diff::Equation<decltype(r1), decltype(r2)>> s2{
+    diff::Equation{r1, r2}};
+auto p2 = s2.minimize({2.0, 0.0});
+s2.get_optimal_value();
+```
+
+| Class | Step selection | Notes |
+|---|---|---|
+| `NLSDogleg<..., DoglegVariant::Standard>` | Classical 3-case Powell dogleg | Cauchy / GN / dogleg interpolation |
+| `NLSDogleg<..., DoglegVariant::Double>` | Dennis & Mei (1979) double dogleg | Scales GN by t before interpolation |
+| `Subspace2D` | 2D subspace optimal step | Solves quartic for λ via companion-matrix eigenvalues |
 
 ## License
 
