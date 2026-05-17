@@ -131,8 +131,9 @@ constexpr void
 Dogleg<Expr, HM>::update_trust_region(value_type &delta, value_type rho,
                                       bool at_boundary, value_type nn) const {
   if (rho < TR_DOWN_THRESHOLD) {
-    if (!at_boundary)
+    if (!at_boundary) {
       delta = nn; // drop to Newton size before shrinking
+    }
     delta *= TR_DOWN_FACTOR;
   } else if (rho > TR_UP_THRESHOLD && at_boundary) {
     delta *= TR_UP_FACTOR;
@@ -145,8 +146,9 @@ constexpr void Dogleg<Expr, HM>::update_B(Matrix &B, const Point &step,
   const Point Bs = B * step;
   const value_type sBs = step.dot(Bs);
   const value_type ys = dg.dot(step);
-  if (ys > value_type{0} && sBs > value_type{0})
+  if (ys > value_type{0} && sBs > value_type{0}) {
     B += (dg * dg.transpose()) / ys - (Bs * Bs.transpose()) / sBs;
+  }
 }
 
 template <diff::CExpression Expr, HessianMode HM>
@@ -156,15 +158,15 @@ constexpr typename Dogleg<Expr, HM>::Point Dogleg<Expr, HM>::minimize(Point p) {
   Matrix B = Matrix::Identity();
   value_type delta = trustregion0;
   auto [fp, g] = eval_grad(p);
-
   for (iter = 0; iter < itmax; ++iter) {
     // Convergence: scaled gradient inf-norm.
     const value_type den = max(abs(fp), value_type{1});
     const value_type gnorm =
         (g.cwiseAbs().array() * p.cwiseAbs().cwiseMax(value_type{1}).array())
             .maxCoeff();
-    if (gnorm / den < tol)
+    if (gnorm / den < tol) {
       break;
+    }
 
     if constexpr (HM == HessianMode::ExactAD) {
       expr.update(Syms{}, p);
@@ -174,7 +176,6 @@ constexpr typename Dogleg<Expr, HM>::Point Dogleg<Expr, HM>::minimize(Point p) {
     }
 
     const auto [step, at_boundary, nn] = compute_step(g, B, delta);
-
     const value_type predicted =
         -g.dot(step) - value_type{0.5} * step.dot(B * step);
     const Point p_new = p + step;
