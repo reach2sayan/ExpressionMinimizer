@@ -1,4 +1,5 @@
 #pragma once
+#include "dogleg.hpp"
 #include "bracketmethod.hpp"
 #include "golden.hpp"
 #include "brent.hpp"

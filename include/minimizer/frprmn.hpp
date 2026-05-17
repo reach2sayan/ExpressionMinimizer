@@ -73,7 +73,6 @@ Frprmn<Expr, Method, LM>::minimize(Point p) {
 
     fp = fret;
     Point g_new = eval_grad(p).second;
-
     const value_type gg = g.squaredNorm();
     const value_type dgg = [&] {
       if constexpr (Method == CGMethod::PolakRibiere) {
@@ -87,7 +86,6 @@ Frprmn<Expr, Method, LM>::minimize(Point p) {
       return p;
     }
     const value_type gam = dgg / gg;
-
     h = -g_new + gam * h;
     xi = h;
     g = std::move(g_new);
