@@ -977,3 +977,44 @@ TEST(Dogleg, Quadratic3D) {
   EXPECT_NEAR(p[2], 0.0, kTol);
   EXPECT_NEAR(dl.fret, 0.0, kTol * kTol);
 }
+
+// Dogleg ExactAD tests
+TEST(DoglegExactAD, Bowl2D) {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  auto y = diff::Variable<double, 'y'>{0.0};
+  auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
+
+  exprmin::Dogleg<decltype(f), exprmin::HessianMode::ExactAD> dl{f};
+  auto p = dl.minimize({0.0, 0.0});
+
+  EXPECT_NEAR(p[0], 1.0, kTol);
+  EXPECT_NEAR(p[1], 2.0, kTol);
+  EXPECT_NEAR(dl.fret, 0.0, kTol * kTol);
+}
+
+TEST(DoglegExactAD, Rosenbrock) {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  auto y = diff::Variable<double, 'y'>{0.0};
+  auto f = 100.0 * (y - x * x) * (y - x * x) + (1.0 - x) * (1.0 - x);
+
+  exprmin::Dogleg<decltype(f), exprmin::HessianMode::ExactAD> dl{f, 1e-10};
+  auto p = dl.minimize({0.0, 0.0});
+
+  EXPECT_NEAR(p[0], 1.0, 1e-5);
+  EXPECT_NEAR(p[1], 1.0, 1e-5);
+}
+
+TEST(DoglegExactAD, Quadratic3D) {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  auto y = diff::Variable<double, 'y'>{0.0};
+  auto z = diff::Variable<double, 'z'>{0.0};
+  auto f = x * x + 2.0 * y * y + 3.0 * z * z;
+
+  exprmin::Dogleg<decltype(f), exprmin::HessianMode::ExactAD> dl{f};
+  auto p = dl.minimize({3.0, 3.0, 3.0});
+
+  EXPECT_NEAR(p[0], 0.0, kTol);
+  EXPECT_NEAR(p[1], 0.0, kTol);
+  EXPECT_NEAR(p[2], 0.0, kTol);
+  EXPECT_NEAR(dl.fret, 0.0, kTol * kTol);
+}

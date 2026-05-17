@@ -10,6 +10,8 @@ namespace exprmin {
 
 namespace mp = boost::mp11;
 
+enum class HessianMode { BFGS, ExactAD };
+
 // Powell dogleg trust-region minimizer.
 //
 // At each iteration builds the dogleg step from three cases:
@@ -17,12 +19,13 @@ namespace mp = boost::mp11;
 //   2. Cauchy step already reaches trust-region boundary → scale down.
 //   3. Otherwise → interpolate Cauchy→Newton to land on the boundary.
 //
-// The Hessian approximation B is updated by the BFGS rank-2 formula
-// (applied directly to B, not its inverse) so that gᵀBg and B⁻¹g
-// are both available each iteration.
+// HM == BFGS (default): Hessian approximated via rank-2 BFGS updates.
+// HM == ExactAD:        exact Hessian computed every iteration via
+//                       diff::derivative_tensor<2>(expr).
 //
 // Trust-region radius is adjusted via ρ = actual/predicted reduction.
-template <diff::CExpression Expr> struct Dogleg {
+template <diff::CExpression Expr, HessianMode HM = HessianMode::BFGS>
+struct Dogleg {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr int N = static_cast<int>(mp::mp_size<Syms>::value);
@@ -84,10 +87,10 @@ public:
   constexpr Point minimize(Point p);
 };
 
-template <diff::CExpression Expr>
-constexpr typename Dogleg<Expr>::StepResult
-Dogleg<Expr>::compute_step(const Point &g, const Matrix &B,
-                           value_type delta) const {
+template <diff::CExpression Expr, HessianMode HM>
+constexpr typename Dogleg<Expr, HM>::StepResult
+Dogleg<Expr, HM>::compute_step(const Point &g, const Matrix &B,
+                               value_type delta) const {
   using std::sqrt;
 
   // Cauchy step: steepest descent scaled to the quadratic-model minimum.
@@ -123,10 +126,10 @@ Dogleg<Expr>::compute_step(const Point &g, const Matrix &B,
   }
 }
 
-template <diff::CExpression Expr>
+template <diff::CExpression Expr, HessianMode HM>
 constexpr void
-Dogleg<Expr>::update_trust_region(value_type &delta, value_type rho,
-                                  bool at_boundary, value_type nn) const {
+Dogleg<Expr, HM>::update_trust_region(value_type &delta, value_type rho,
+                                      bool at_boundary, value_type nn) const {
   if (rho < TR_DOWN_THRESHOLD) {
     if (!at_boundary)
       delta = nn; // drop to Newton size before shrinking
@@ -136,9 +139,9 @@ Dogleg<Expr>::update_trust_region(value_type &delta, value_type rho,
   }
 }
 
-template <diff::CExpression Expr>
-constexpr void Dogleg<Expr>::update_B(Matrix &B, const Point &step,
-                                      const Point &dg) const {
+template <diff::CExpression Expr, HessianMode HM>
+constexpr void Dogleg<Expr, HM>::update_B(Matrix &B, const Point &step,
+                                          const Point &dg) const {
   const Point Bs = B * step;
   const value_type sBs = step.dot(Bs);
   const value_type ys = dg.dot(step);
@@ -146,8 +149,8 @@ constexpr void Dogleg<Expr>::update_B(Matrix &B, const Point &step,
     B += (dg * dg.transpose()) / ys - (Bs * Bs.transpose()) / sBs;
 }
 
-template <diff::CExpression Expr>
-constexpr typename Dogleg<Expr>::Point Dogleg<Expr>::minimize(Point p) {
+template <diff::CExpression Expr, HessianMode HM>
+constexpr typename Dogleg<Expr, HM>::Point Dogleg<Expr, HM>::minimize(Point p) {
   using std::abs, std::max;
 
   Matrix B = Matrix::Identity();
@@ -163,6 +166,13 @@ constexpr typename Dogleg<Expr>::Point Dogleg<Expr>::minimize(Point p) {
     if (gnorm / den < tol)
       break;
 
+    if constexpr (HM == HessianMode::ExactAD) {
+      expr.update(Syms{}, p);
+      const auto H = diff::derivative_tensor<2>(expr);
+      B = Eigen::Map<const Eigen::Matrix<value_type, N, N, Eigen::RowMajor>>(
+          &H[0][0]);
+    }
+
     const auto [step, at_boundary, nn] = compute_step(g, B, delta);
 
     const value_type predicted =
@@ -173,14 +183,18 @@ constexpr typename Dogleg<Expr>::Point Dogleg<Expr>::minimize(Point p) {
                                : value_type{0};
 
     update_trust_region(delta, rho, at_boundary, nn);
-    if (delta < trustregion_min)
+    if (delta < trustregion_min) {
       break;
+    }
 
     if (rho > value_type{0}) {
       auto [fn, g_new] = eval_grad(p_new);
-      update_B(B, step, g_new - g);
-      if (step.cwiseAbs().maxCoeff() < tol)
+      if constexpr (HM == HessianMode::BFGS) {
+        update_B(B, step, g_new - g);
+      }
+      if (step.cwiseAbs().maxCoeff() < tol) {
         break;
+      }
       p = p_new;
       fp = fn;
       g = std::move(g_new);

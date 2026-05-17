@@ -36,7 +36,6 @@ constexpr typename GaussNewton<Expr, ParamSyms, InputSyms>::ParamVec
 GaussNewton<Expr, ParamSyms, InputSyms>::fit(
     ParamVec params, const std::vector<DataPoint> &data) {
   constexpr int Ni = static_cast<int>(Base::N);
-  using NMat = Eigen::Matrix<value_type, Ni, Ni>;
   using NVec = Eigen::Vector<value_type, Ni>;
 
   for (int iter = 0; iter < itmax; ++iter) {
