@@ -46,16 +46,15 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(const ParamVec &g,
 
   // Cauchy step: dx_sd = -alpha * g, alpha = ||g||^2 / ||Jg||^2.
   const RVec Jg = J * g;
-  const value_type Jg_sq = Jg.squaredNorm();
-  const value_type alpha =
+  const auto Jg_sq = Jg.squaredNorm();
+  const auto alpha =
       (Jg_sq > value_type{0}) ? g.squaredNorm() / Jg_sq : value_type{1};
   const ParamVec dx_sd = -alpha * g;
 
   // Gauss-Newton step: (J^T J) dx_gn = -g.
   const ParamVec dx_gn = -(B.ldlt().solve(g));
-
-  const value_type norm_sd = dx_sd.norm();
-  const value_type norm_gn = dx_gn.norm();
+  const auto norm_sd = dx_sd.norm();
+  const auto norm_gn = dx_gn.norm();
 
   if (norm_sd >= delta) {
     return (delta / norm_sd) * dx_sd;
@@ -65,13 +64,13 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(const ParamVec &g,
     return dx_gn;
   }
 
-  value_type t = value_type{1};
+  auto t = value_type{1};
   if constexpr (DV == DoglegVariant::Double) {
-    const value_type gBg = g.dot(B * g);
-    const value_type gdx = abs(g.dot(dx_gn));
+    const auto gBg = g.dot(B * g);
+    const auto gdx = abs(g.dot(dx_gn));
     if (gBg > value_type{0} && gdx > value_type{0}) {
-      const value_type g2 = g.squaredNorm();
-      const value_type c = min(value_type{1}, (g2 * g2) / (gBg * gdx));
+      const auto g2 = g.squaredNorm();
+      const auto c = min(value_type{1}, (g2 * g2) / (gBg * gdx));
       t = value_type{1} - value_type{0.8} * (value_type{1} - c);
     }
     if (t * norm_gn <= delta) {
@@ -79,15 +78,15 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(const ParamVec &g,
     }
   }
 
-  const ParamVec d = t * dx_gn - dx_sd;
-  const value_type a_q = d.squaredNorm();
-  const value_type b_q = value_type{2} * dx_sd.dot(d);
-  const value_type c_q = dx_sd.squaredNorm() - delta * delta;
-  value_type disc = b_q * b_q - value_type{4} * a_q * c_q;
+  const auto d = t * dx_gn - dx_sd;
+  const auto a_q = d.squaredNorm();
+  const auto b_q = value_type{2} * dx_sd.dot(d);
+  const auto c_q = dx_sd.squaredNorm() - delta * delta;
+  auto disc = b_q * b_q - value_type{4} * a_q * c_q;
   if (disc < value_type{0}) {
     disc = value_type{0};
   }
-  const value_type beta = (-b_q + sqrt(disc)) / (value_type{2} * a_q);
+  const auto beta = (-b_q + sqrt(disc)) / (value_type{2} * a_q);
   return dx_sd + beta * d;
 }
 

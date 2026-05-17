@@ -113,7 +113,7 @@ Subspace2D<diff::Equation<RExprs...>>::compute_step(const ParamVec &g,
     if (abs(eigs[k].imag()) > value_type{1e-6} * abs(eigs[k].real())) {
       continue;
     }
-    const value_type lam = static_cast<value_type>(eigs[k].real());
+    const auto lam = static_cast<value_type>(eigs[k].real());
     Eigen::Matrix<value_type, 2, 2> A2 = subB;
     A2.diagonal().array() += lam;
     const value_type det2 = A2.determinant();
@@ -121,7 +121,7 @@ Subspace2D<diff::Equation<RExprs...>>::compute_step(const ParamVec &g,
       continue;
     }
 
-    const Eigen::Vector<value_type, 2> y_raw = -(A2.inverse() * subg);
+    const auto y_raw = -(A2.inverse() * subg);
     const value_type yn = y_raw.norm();
     if (yn < EPS) {
       continue;

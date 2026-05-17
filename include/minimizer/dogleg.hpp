@@ -86,11 +86,11 @@ struct Dogleg
                                value_type delta) {
     using std::sqrt;
 
-    const value_type gBg = g.dot(B * g);
-    const value_type kc =
+    const auto gBg = g.dot(B * g);
+    const auto kc =
         (gBg > value_type{0}) ? (-g.squaredNorm() / gBg) : value_type{-1};
     const Point p_c = kc * g;
-    const value_type nc = p_c.norm();
+    const auto nc = p_c.norm();
 
     const Point p_n = -(B.ldlt().solve(g));
     nn_ = p_n.norm();
@@ -101,8 +101,8 @@ struct Dogleg
       return (delta / nc) * p_c;
     } else {
       const Point d = p_n - p_c;
-      const value_type l2 = d.squaredNorm();
-      const value_type c = d.dot(p_c);
+      const auto l2 = d.squaredNorm();
+      const auto c = d.dot(p_c);
       value_type disc = c * c - l2 * (nc * nc - delta * delta);
       if (disc < value_type{0}) {
         disc = value_type{0};
