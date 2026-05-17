@@ -32,7 +32,6 @@ struct Dogleg {
   using Point = Eigen::Vector<value_type, N>;
   using Matrix = Eigen::Matrix<value_type, N, N>;
 
-  value_type fret{};
   int iter{};
 
 private:
@@ -41,6 +40,7 @@ private:
   int itmax;
   value_type trustregion0;
   value_type trustregion_min;
+  value_type fret{};
 
   static constexpr value_type TR_DOWN_FACTOR = value_type{0.1};
   static constexpr value_type TR_DOWN_THRESHOLD = value_type{0.25};
@@ -65,6 +65,7 @@ private:
   constexpr void update_B(Matrix &B, const Point &step, const Point &dg) const;
 
 public:
+  constexpr value_type get_optimal_value() const { return fret; }
   constexpr explicit Dogleg(Expr e, value_type tol_ = value_type{1e-8},
                             int itmax_ = 200,
                             value_type trustregion0_ = value_type{1e3},

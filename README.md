@@ -29,6 +29,7 @@ reverse-mode automatic differentiation — no hand-coded derivatives required.
 | `LevenbergMarquardt` | §15.5 | Nonlinear least-squares fitting with Marquardt damping |
 | `GaussNewton` | — | Nonlinear least-squares (undamped normal equations) |
 | `AugLag` | — | Augmented Lagrangian constrained minimization |
+| `Broyden` | Broyden (1965) | Rank-1 quasi-Newton root finder for F(x) = 0 |
 
 All multi-dimensional optimizers infer the problem dimensionality at compile
 time from the set of `Variable` symbols in the expression tree.
@@ -237,6 +238,21 @@ exprmin::SimAnneal sa{f, 1.0, 0.95, 100};
 auto p = sa.minimize({3.0, 0.0}, /*delta=*/1.0);
 // sa.fret holds f at the returned minimum
 ```
+
+### Broyden root finding
+
+```cpp
+auto x = diff::Variable<double, 'x'>{0.0};
+auto y = diff::Variable<double, 'y'>{0.0};
+auto f1 = x * x + y * y - 4.0;  // x² + y² = 4
+auto f2 = x - y;                  // x = y  →  root: {√2, √2}
+
+exprmin::Broyden br{diff::Equation{f1, f2}};
+auto p = br.find_root({1.0, 0.5}); // p ≈ {√2, √2}
+// br.residual_norm() < tol
+```
+
+Uses exact reverse-mode AD Jacobian (instead of finite differences as in GSL) for initialization and the fallback Jacobian recomputation. Each iteration applies a rank-1 Broyden update to the approximate inverse Jacobian H ≈ −J⁻¹, with Hebden backtracking on ‖F‖.
 
 ## License
 
