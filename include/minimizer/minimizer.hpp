@@ -1,5 +1,6 @@
 #pragma once
 #include "broyden.hpp"
+#include "trustregionbase.hpp"
 #include "nlsdogleg.hpp"
 #include "subspace2d.hpp"
 #include "dogleg.hpp"

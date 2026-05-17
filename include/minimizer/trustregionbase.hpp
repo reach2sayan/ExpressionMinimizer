@@ -3,6 +3,8 @@
 #include "equation.hpp"
 #include "gradient.hpp"
 #include <Eigen/Dense>
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <tuple>
 #include <utility>
