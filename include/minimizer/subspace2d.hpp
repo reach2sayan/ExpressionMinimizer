@@ -21,8 +21,7 @@ namespace mp = boost::mp11;
 // matrix eigenvalues (Eigen::EigenSolver<Matrix4>).
 //
 // Reference: GSL multilarge_nlinear/subspace2D.c (Kaufman 1999)
-template <typename System>
-struct Subspace2D;
+template <typename System> struct Subspace2D;
 
 template <diff::CExpression... RExprs>
 struct Subspace2D<diff::Equation<RExprs...>> {
@@ -35,10 +34,10 @@ struct Subspace2D<diff::Equation<RExprs...>> {
   static constexpr int M = static_cast<int>(Sys::output_dim);
   static constexpr int N = static_cast<int>(Sys::input_dim);
   using ParamVec = Eigen::Vector<value_type, N>;
-  using RVec     = Eigen::Vector<value_type, M>;
-  using JMat     = Eigen::Matrix<value_type, M, N>;
-  using NMat     = Eigen::Matrix<value_type, N, N>;
-  using WMat     = Eigen::Matrix<value_type, N, 2>;
+  using RVec = Eigen::Vector<value_type, M>;
+  using JMat = Eigen::Matrix<value_type, M, N>;
+  using NMat = Eigen::Matrix<value_type, N, N>;
+  using WMat = Eigen::Matrix<value_type, N, 2>;
 
   int iter{};
 
@@ -50,60 +49,62 @@ private:
   value_type trustregion_min;
   value_type fret{};
 
-  static constexpr value_type TR_DOWN_FACTOR    = value_type{0.1};
+  static constexpr value_type TR_DOWN_FACTOR = value_type{0.1};
   static constexpr value_type TR_DOWN_THRESHOLD = value_type{0.25};
-  static constexpr value_type TR_UP_FACTOR      = value_type{2.0};
-  static constexpr value_type TR_UP_THRESHOLD   = value_type{0.75};
+  static constexpr value_type TR_UP_FACTOR = value_type{2.0};
+  static constexpr value_type TR_UP_THRESHOLD = value_type{0.75};
 
   constexpr auto to_arr(const ParamVec &p) const noexcept {
     std::array<value_type, static_cast<std::size_t>(N)> arr;
-    for (int i = 0; i < N; ++i)
-      arr[static_cast<std::size_t>(i)] = p[i];
+    std::copy_n(p.data(), N, arr.begin());
     return arr;
   }
-
-  constexpr std::pair<RVec, JMat> eval_rJ(const ParamVec &p) {
-    system.update(Syms{}, to_arr(p));
-    RVec r;
-    if constexpr (M == 1) {
-      r[0] = system.evaluate();
-    } else {
-      const auto r_arr = system.evaluate();
-      for (int i = 0; i < M; ++i)
-        r[i] = r_arr[static_cast<std::size_t>(i)];
-    }
-    const auto J_arr = system.template jacobian<diff::DiffMode::Reverse>();
-    JMat J;
-    for (int i = 0; i < M; ++i)
-      for (int j = 0; j < N; ++j)
-        J(i, j) = J_arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
-    return {r, J};
-  }
-
-  // 2D subspace step: minimizes ½(g^T dx + dx^T B dx) over span{dx_sd, dx_gn} ∩ ‖dx‖ ≤ delta
+  constexpr std::pair<RVec, JMat> eval_rJ(const ParamVec &p);
+  // 2D subspace step: minimizes ½(g^T dx + dx^T B dx) over span{dx_sd, dx_gn} ∩
+  // ‖dx‖ ≤ delta
   constexpr ParamVec compute_step(const ParamVec &g, const NMat &B,
-                                   const JMat &J, value_type delta) const;
+                                  const JMat &J, value_type delta) const;
 
 public:
   constexpr value_type get_optimal_value() const { return fret; }
-
   constexpr explicit Subspace2D(diff::Equation<RExprs...> sys,
-                                 value_type tol_   = value_type{1e-8},
-                                 int itmax_        = 200,
-                                 value_type tr0_   = value_type{1e3},
-                                 value_type trmin_ = value_type{1e-12})
-      : system{std::move(sys)}, tol{tol_}, itmax{itmax_},
-        trustregion0{tr0_}, trustregion_min{trmin_} {}
+                                value_type tol_ = value_type{1e-8},
+                                int itmax_ = 200,
+                                value_type tr0_ = value_type{1e3},
+                                value_type trmin_ = value_type{1e-12})
+      : system{std::move(sys)}, tol{tol_}, itmax{itmax_}, trustregion0{tr0_},
+        trustregion_min{trmin_} {}
 
   constexpr ParamVec minimize(ParamVec p);
 };
 
-// ── compute_step ──────────────────────────────────────────────────────────────
+template <diff::CExpression... RExprs>
+constexpr std::pair<typename Subspace2D<diff::Equation<RExprs...>>::RVec,
+                    typename Subspace2D<diff::Equation<RExprs...>>::JMat>
+Subspace2D<diff::Equation<RExprs...>>::eval_rJ(const ParamVec &p) {
+  system.update(Syms{}, to_arr(p));
+  RVec r;
+  if constexpr (M == 1) {
+    r[0] = system.evaluate();
+  } else {
+    const auto r_arr = system.evaluate();
+    for (int i = 0; i < M; ++i)
+      r[i] = r_arr[static_cast<std::size_t>(i)];
+  }
+  const auto J_arr = system.template jacobian<diff::DiffMode::Reverse>();
+  JMat J;
+  for (int i = 0; i < M; ++i)
+    for (int j = 0; j < N; ++j)
+      J(i, j) = J_arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+  return {r, J};
+}
 
 template <diff::CExpression... RExprs>
 constexpr typename Subspace2D<diff::Equation<RExprs...>>::ParamVec
-Subspace2D<diff::Equation<RExprs...>>::compute_step(
-    const ParamVec &g, const NMat &B, const JMat &J, value_type delta) const {
+Subspace2D<diff::Equation<RExprs...>>::compute_step(const ParamVec &g,
+                                                    const NMat &B,
+                                                    const JMat &J,
+                                                    value_type delta) const {
   using std::sqrt, std::abs;
   constexpr value_type EPS = std::numeric_limits<value_type>::epsilon();
 
@@ -145,9 +146,9 @@ Subspace2D<diff::Equation<RExprs...>>::compute_step(
   const Eigen::Vector<value_type, 2> subg = W.transpose() * g;
   const Eigen::Matrix<value_type, 2, 2> subB = W.transpose() * B * W;
 
-  const value_type trB   = subB.trace();
-  const value_type detB  = subB.determinant();
-  const value_type d2    = delta * delta;
+  const value_type trB = subB.trace();
+  const value_type detB = subB.determinant();
+  const value_type d2 = delta * delta;
 
   // Precompute terms for the quartic in λ:
   //   ‖(B+λI)^{-1} g‖² = δ²  →  quartic a0 + a1λ + a2λ² + a3λ³ + λ⁴ = 0
@@ -155,8 +156,10 @@ Subspace2D<diff::Equation<RExprs...>>::compute_step(
   //   term0 = g^T adj(B)^T adj(B) g  = ‖adj(B) g‖²
   //   term1 = g^T adj(B)^T g = g^T adj(B) g
   Eigen::Matrix<value_type, 2, 2> adjB;
-  adjB(0,0) =  subB(1,1);  adjB(0,1) = -subB(0,1);
-  adjB(1,0) = -subB(1,0);  adjB(1,1) =  subB(0,0);
+  adjB(0, 0) = subB(1, 1);
+  adjB(0, 1) = -subB(0, 1);
+  adjB(1, 0) = -subB(1, 0);
+  adjB(1, 1) = subB(0, 0);
 
   const Eigen::Vector<value_type, 2> adjBg = adjB * subg;
   const value_type term0 = adjBg.squaredNorm();
@@ -178,7 +181,7 @@ Subspace2D<diff::Equation<RExprs...>>::compute_step(
   C(1, 0) = C(2, 1) = C(3, 2) = 1.0;
 
   Eigen::EigenSolver<Eigen::Matrix<double, 4, 4>> es(C, false);
-  const auto eigs = es.eigenvalues();  // 4 complex values
+  const auto eigs = es.eigenvalues(); // 4 complex values
 
   // Evaluate 2D objective for each real eigenvalue root
   value_type best_obj = std::numeric_limits<value_type>::max();
@@ -200,8 +203,7 @@ Subspace2D<diff::Equation<RExprs...>>::compute_step(
     if (abs(det2) < EPS)
       continue;
 
-    const Eigen::Vector<value_type, 2> y_raw =
-        -(A2.inverse() * subg);
+    const Eigen::Vector<value_type, 2> y_raw = -(A2.inverse() * subg);
 
     // Scale to trust-region boundary
     const value_type yn = y_raw.norm();
@@ -225,7 +227,8 @@ Subspace2D<diff::Equation<RExprs...>>::compute_step(
   return (delta / norm_sd) * dx_sd;
 }
 
-// ── minimize ──────────────────────────────────────────────────────────────────
+// ── minimize
+// ──────────────────────────────────────────────────────────────────
 
 template <diff::CExpression... RExprs>
 constexpr typename Subspace2D<diff::Equation<RExprs...>>::ParamVec
@@ -233,8 +236,8 @@ Subspace2D<diff::Equation<RExprs...>>::minimize(ParamVec p) {
   using std::abs, std::max;
 
   auto [r, J] = eval_rJ(p);
-  NMat B        = J.transpose() * J;
-  ParamVec g    = J.transpose() * r;
+  NMat B = J.transpose() * J;
+  ParamVec g = J.transpose() * r;
   value_type phi = value_type{0.5} * r.squaredNorm();
   value_type delta = trustregion0;
 
@@ -243,7 +246,8 @@ Subspace2D<diff::Equation<RExprs...>>::minimize(ParamVec p) {
     const value_type gnorm =
         (g.cwiseAbs().array() * p.cwiseAbs().cwiseMax(value_type{1}).array())
             .maxCoeff();
-    if (gnorm / den < tol) break;
+    if (gnorm / den < tol)
+      break;
 
     const ParamVec step = compute_step(g, B, J, delta);
     const bool at_boundary = step.norm() >= value_type{0.999} * delta;
@@ -263,15 +267,19 @@ Subspace2D<diff::Equation<RExprs...>>::minimize(ParamVec p) {
     } else if (rho > TR_UP_THRESHOLD && at_boundary) {
       delta *= TR_UP_FACTOR;
     }
-    if (delta < trustregion_min) break;
+    if (delta < trustregion_min) {
+      break;
+    }
 
     if (rho > value_type{0}) {
-      if (step.cwiseAbs().maxCoeff() < tol) break;
-      p   = p_new;
-      r   = std::move(r_new);
-      J   = std::move(J_new);
-      B   = J.transpose() * J;
-      g   = J.transpose() * r;
+      if (step.cwiseAbs().maxCoeff() < tol) {
+        break;
+      }
+      p = p_new;
+      r = std::move(r_new);
+      J = std::move(J_new);
+      B = J.transpose() * J;
+      g = J.transpose() * r;
       phi = phi_new;
     }
   }
@@ -280,11 +288,8 @@ Subspace2D<diff::Equation<RExprs...>>::minimize(ParamVec p) {
   return p;
 }
 
-// ── deduction guides ──────────────────────────────────────────────────────────
-
 template <diff::CExpression... RExprs>
-Subspace2D(diff::Equation<RExprs...>)
-    -> Subspace2D<diff::Equation<RExprs...>>;
+Subspace2D(diff::Equation<RExprs...>) -> Subspace2D<diff::Equation<RExprs...>>;
 
 template <diff::CExpression... RExprs, typename T>
 Subspace2D(diff::Equation<RExprs...>, T)

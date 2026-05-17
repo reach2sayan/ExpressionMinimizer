@@ -49,10 +49,10 @@ private:
   value_type trustregion_min;
   value_type fret{};
 
-  static constexpr value_type TR_DOWN_FACTOR    = value_type{0.1};
+  static constexpr value_type TR_DOWN_FACTOR = value_type{0.1};
   static constexpr value_type TR_DOWN_THRESHOLD = value_type{0.25};
-  static constexpr value_type TR_UP_FACTOR      = value_type{2.0};
-  static constexpr value_type TR_UP_THRESHOLD   = value_type{0.75};
+  static constexpr value_type TR_UP_FACTOR = value_type{2.0};
+  static constexpr value_type TR_UP_THRESHOLD = value_type{0.75};
 
   constexpr auto to_arr(const ParamVec &p) const noexcept {
     std::array<value_type, static_cast<std::size_t>(N)> arr;
@@ -75,34 +75,35 @@ private:
     JMat J;
     for (int i = 0; i < M; ++i)
       for (int j = 0; j < N; ++j)
-        J(i, j) = J_arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+        J(i, j) =
+            J_arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
     return {r, J};
   }
 
   // Select dogleg step given gradient g, B = J^T J, Jacobian J, radius delta.
   constexpr ParamVec compute_step(const ParamVec &g, const NMat &B,
-                                   const JMat &J, value_type delta) const;
+                                  const JMat &J, value_type delta) const;
 
 public:
   constexpr value_type get_optimal_value() const { return fret; }
 
   constexpr explicit NLSDogleg(diff::Equation<RExprs...> sys,
-                                value_type tol_   = value_type{1e-8},
-                                int itmax_        = 200,
-                                value_type tr0_   = value_type{1e3},
-                                value_type trmin_ = value_type{1e-12})
-      : system{std::move(sys)}, tol{tol_}, itmax{itmax_},
-        trustregion0{tr0_}, trustregion_min{trmin_} {}
+                               value_type tol_ = value_type{1e-8},
+                               int itmax_ = 200,
+                               value_type tr0_ = value_type{1e3},
+                               value_type trmin_ = value_type{1e-12})
+      : system{std::move(sys)}, tol{tol_}, itmax{itmax_}, trustregion0{tr0_},
+        trustregion_min{trmin_} {}
 
   constexpr ParamVec minimize(ParamVec p);
 };
 
-// ── compute_step ──────────────────────────────────────────────────────────────
-
 template <diff::CExpression... RExprs, DoglegVariant DV>
 constexpr typename NLSDogleg<diff::Equation<RExprs...>, DV>::ParamVec
-NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(
-    const ParamVec &g, const NMat &B, const JMat &J, value_type delta) const {
+NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(const ParamVec &g,
+                                                       const NMat &B,
+                                                       const JMat &J,
+                                                       value_type delta) const {
   using std::sqrt, std::abs, std::min;
 
   // Cauchy step: dx_sd = -alpha * g,  alpha = ‖g‖² / ‖Jg‖²
@@ -119,11 +120,11 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(
   const value_type norm_gn = dx_gn.norm();
 
   if (norm_sd >= delta) {
-    return (delta / norm_sd) * dx_sd;  // Cauchy outside TR → truncate
+    return (delta / norm_sd) * dx_sd; // Cauchy outside TR → truncate
   }
 
   if (norm_gn <= delta) {
-    return dx_gn;  // GN inside TR → use as-is (global minimizer of quadratic)
+    return dx_gn; // GN inside TR → use as-is (global minimizer of quadratic)
   }
 
   // GN outside, Cauchy inside: compute interpolation factor t
@@ -149,12 +150,12 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(
   const value_type b_q = value_type{2} * dx_sd.dot(d);
   const value_type c_q = dx_sd.squaredNorm() - delta * delta;
   value_type disc = b_q * b_q - value_type{4} * a_q * c_q;
-  if (disc < value_type{0}) disc = value_type{0};
+  if (disc < value_type{0}) {
+    disc = value_type{0};
+  }
   const value_type beta = (-b_q + sqrt(disc)) / (value_type{2} * a_q);
   return dx_sd + beta * d;
 }
-
-// ── minimize ──────────────────────────────────────────────────────────────────
 
 template <diff::CExpression... RExprs, DoglegVariant DV>
 constexpr typename NLSDogleg<diff::Equation<RExprs...>, DV>::ParamVec
@@ -162,8 +163,8 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::minimize(ParamVec p) {
   using std::abs, std::max;
 
   auto [r, J] = eval_rJ(p);
-  NMat B       = J.transpose() * J;
-  ParamVec g   = J.transpose() * r;
+  NMat B = J.transpose() * J;
+  ParamVec g = J.transpose() * r;
   value_type phi = value_type{0.5} * r.squaredNorm();
   value_type delta = trustregion0;
 
@@ -172,7 +173,8 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::minimize(ParamVec p) {
     const value_type gnorm =
         (g.cwiseAbs().array() * p.cwiseAbs().cwiseMax(value_type{1}).array())
             .maxCoeff();
-    if (gnorm / den < tol) break;
+    if (gnorm / den < tol)
+      break;
 
     const ParamVec step = compute_step(g, B, J, delta);
     const bool at_boundary = step.norm() >= value_type{0.999} * delta;
@@ -192,15 +194,18 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::minimize(ParamVec p) {
     } else if (rho > TR_UP_THRESHOLD && at_boundary) {
       delta *= TR_UP_FACTOR;
     }
-    if (delta < trustregion_min) break;
+    if (delta < trustregion_min)
+      break;
 
     if (rho > value_type{0}) {
-      if (step.cwiseAbs().maxCoeff() < tol) break;
-      p   = p_new;
-      r   = std::move(r_new);
-      J   = std::move(J_new);
-      B   = J.transpose() * J;
-      g   = J.transpose() * r;
+      if (step.cwiseAbs().maxCoeff() < tol) {
+        break;
+      }
+      p = p_new;
+      r = std::move(r_new);
+      J = std::move(J_new);
+      B = J.transpose() * J;
+      g = J.transpose() * r;
       phi = phi_new;
     }
   }
@@ -209,14 +214,10 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::minimize(ParamVec p) {
   return p;
 }
 
-// ── deduction guides ──────────────────────────────────────────────────────────
-
 template <diff::CExpression... RExprs>
-NLSDogleg(diff::Equation<RExprs...>)
-    -> NLSDogleg<diff::Equation<RExprs...>>;
+NLSDogleg(diff::Equation<RExprs...>) -> NLSDogleg<diff::Equation<RExprs...>>;
 
 template <diff::CExpression... RExprs, typename T>
-NLSDogleg(diff::Equation<RExprs...>, T)
-    -> NLSDogleg<diff::Equation<RExprs...>>;
+NLSDogleg(diff::Equation<RExprs...>, T) -> NLSDogleg<diff::Equation<RExprs...>>;
 
 } // namespace exprmin
