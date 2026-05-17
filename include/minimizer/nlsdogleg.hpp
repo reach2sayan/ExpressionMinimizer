@@ -19,10 +19,9 @@ struct NLSDogleg;
 
 template <diff::CExpression... RExprs, DoglegVariant DV>
 struct NLSDogleg<diff::Equation<RExprs...>, DV>
-    : NLSTrustRegionBase<NLSDogleg<diff::Equation<RExprs...>, DV>,
-                         RExprs...> {
-  using Base = NLSTrustRegionBase<NLSDogleg<diff::Equation<RExprs...>, DV>,
-                                  RExprs...>;
+    : NLSTrustRegionBase<NLSDogleg<diff::Equation<RExprs...>, DV>, RExprs...> {
+  using Base =
+      NLSTrustRegionBase<NLSDogleg<diff::Equation<RExprs...>, DV>, RExprs...>;
   using value_type = typename Base::value_type;
   using ParamVec = typename Base::ParamVec;
   using NMat = typename Base::NMat;
@@ -33,17 +32,17 @@ struct NLSDogleg<diff::Equation<RExprs...>, DV>
   using Base::get_optimal_value;
   using Base::iter;
 
-  constexpr ParamVec compute_step(const ParamVec& g, const NMat& B,
+  constexpr ParamVec compute_step(const ParamVec &g, const NMat &B,
                                   value_type delta) const;
 };
 
 template <diff::CExpression... RExprs, DoglegVariant DV>
 constexpr typename NLSDogleg<diff::Equation<RExprs...>, DV>::ParamVec
-NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(
-    const ParamVec& g, const NMat& B, value_type delta) const {
+NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(const ParamVec &g,
+                                                       const NMat &B,
+                                                       value_type delta) const {
   using std::abs, std::min, std::sqrt;
-
-  const JMat& J = this->current_J();
+  const JMat &J = this->current_J();
 
   // Cauchy step: dx_sd = -alpha * g, alpha = ||g||^2 / ||Jg||^2.
   const RVec Jg = J * g;
