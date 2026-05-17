@@ -61,24 +61,7 @@ private:
     return arr;
   }
 
-  constexpr std::pair<RVec, JMat> eval_rJ(const ParamVec &p) {
-    system.update(Syms{}, to_arr(p));
-    RVec r;
-    if constexpr (M == 1) {
-      r[0] = system.evaluate();
-    } else {
-      const auto r_arr = system.evaluate();
-      for (int i = 0; i < M; ++i)
-        r[i] = r_arr[static_cast<std::size_t>(i)];
-    }
-    const auto J_arr = system.template jacobian<diff::DiffMode::Reverse>();
-    JMat J;
-    for (int i = 0; i < M; ++i)
-      for (int j = 0; j < N; ++j)
-        J(i, j) =
-            J_arr[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
-    return {r, J};
-  }
+  constexpr std::pair<RVec, JMat> eval_rJ(const ParamVec &p);
 
   // Select dogleg step given gradient g, B = J^T J, Jacobian J, radius delta.
   constexpr ParamVec compute_step(const ParamVec &g, const NMat &B,
@@ -86,7 +69,6 @@ private:
 
 public:
   constexpr value_type get_optimal_value() const { return fret; }
-
   constexpr explicit NLSDogleg(diff::Equation<RExprs...> sys,
                                value_type tol_ = value_type{1e-8},
                                int itmax_ = 200,
@@ -97,6 +79,27 @@ public:
 
   constexpr ParamVec minimize(ParamVec p);
 };
+
+template <diff::CExpression... RExprs, DoglegVariant DV>
+constexpr std::pair<typename NLSDogleg<diff::Equation<RExprs...>, DV>::RVec,
+                    typename NLSDogleg<diff::Equation<RExprs...>, DV>::JMat>
+NLSDogleg<diff::Equation<RExprs...>, DV>::eval_rJ(const ParamVec &p) {
+  system.update(Syms{}, to_arr(p));
+  RVec r;
+  if constexpr (M == 1) {
+    r[0] = system.evaluate();
+  } else {
+    const auto r_arr = system.evaluate();
+    for (int i = 0; i < M; ++i)
+      r[i] = r_arr[static_cast<std::size_t>(i)];
+  }
+  const auto J_arr = system.template jacobian<diff::DiffMode::Reverse>();
+  JMat J = Eigen::Map<
+    const Eigen::Matrix<value_type, M, N, Eigen::RowMajor>
+>(&J_arr[0][0]);
+
+  return {r, J};
+}
 
 template <diff::CExpression... RExprs, DoglegVariant DV>
 constexpr typename NLSDogleg<diff::Equation<RExprs...>, DV>::ParamVec
@@ -173,8 +176,9 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::minimize(ParamVec p) {
     const value_type gnorm =
         (g.cwiseAbs().array() * p.cwiseAbs().cwiseMax(value_type{1}).array())
             .maxCoeff();
-    if (gnorm / den < tol)
+    if (gnorm / den < tol) {
       break;
+    }
 
     const ParamVec step = compute_step(g, B, J, delta);
     const bool at_boundary = step.norm() >= value_type{0.999} * delta;
