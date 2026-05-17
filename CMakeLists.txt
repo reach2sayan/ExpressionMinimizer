@@ -7,17 +7,32 @@ project(ExpressionMinimizer VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(ENABLE_NATIVE_ARCH "Build optimized for this machine" ON)
 option(ENABLE_MKL "Enable Intel MKL backend for Eigen when available" ON)
 
 include(CheckCXXCompilerFlag)
+include(CTest)
+
+set(EXPRMIN_KNOWN_COMPILER OFF)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(EXPRMIN_KNOWN_COMPILER ON)
+    set(EXPRMIN_COMPILER_MSVC ON)
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(EXPRMIN_KNOWN_COMPILER ON)
+    set(EXPRMIN_COMPILER_GCC ON)
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set(EXPRMIN_KNOWN_COMPILER ON)
+    set(EXPRMIN_COMPILER_CLANG ON)
+else ()
+    message(STATUS "Compiler ${CMAKE_CXX_COMPILER_ID}: using portable C++23 defaults only")
+endif ()
 
 # AVX2 — Eigen auto-enables AVX2/FMA vectorization when __AVX2__ is defined
 # by the compiler (via -mavx2 / -march=x86-64-v3 / /arch:AVX2).
-if (MSVC)
+if (EXPRMIN_COMPILER_MSVC)
     check_cxx_compiler_flag(/arch:AVX2 HAVE_AVX2)
     if (HAVE_AVX2)
         add_compile_options(/arch:AVX2)
@@ -72,7 +87,7 @@ if (ENABLE_MKL)
     endif ()
 else ()
     message(STATUS "MKL: disabled by user")
-    target_compile_definitions(eigen_backend INTERFACE EIGEN_NO_MKL -Wno-maybe-uninitialized)
+    target_compile_definitions(eigen_backend INTERFACE EIGEN_NO_MKL)
 endif ()
 
 # OpenMP — Eigen parallelises reductions and some decompositions when _OPENMP
@@ -122,6 +137,7 @@ if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/deps/expression_differentiator/CMake
 endif ()
 add_subdirectory(deps/expression_differentiator)
 
+set(_exprmin_build_testing ${BUILD_TESTING})
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 include(FetchContent)
@@ -133,15 +149,7 @@ FetchContent_Declare(eigen
 set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(eigen)
-
-FetchContent_Declare(googletest
-        URL https://github.com/google/googletest/archive/5376968f6948923e2411081fd9372e71a59d8e77.zip
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
-
-set(BUILD_TESTING ON CACHE BOOL "" FORCE)
+set(BUILD_TESTING ${_exprmin_build_testing} CACHE BOOL "Build testing" FORCE)
 
 add_library(minimizer INTERFACE)
 target_include_directories(minimizer INTERFACE
@@ -157,25 +165,40 @@ if (OpenMP_CXX_FOUND)
 endif ()
 set_target_properties(minimizer PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
 
-add_executable(minimizer_tests tests/minimizer_tests.cpp)
-target_link_libraries(minimizer_tests PRIVATE minimizer gtest_main)
-target_include_directories(minimizer_tests PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/deps/expression_differentiator)
-set_target_properties(minimizer_tests PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+if (BUILD_TESTING)
+    FetchContent_Declare(googletest
+            URL https://github.com/google/googletest/archive/5376968f6948923e2411081fd9372e71a59d8e77.zip
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
 
-if (MSVC)
-    target_compile_options(minimizer_tests PRIVATE /Wall)
-    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-    foreach (target gtest gtest_main gmock gmock_main benchmark benchmark_main)
-        if (TARGET ${target})
-            target_compile_options(${target} PRIVATE /W0 /wd4668)
-            set_target_properties(${target} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
-        endif ()
-    endforeach ()
-else ()
-    target_compile_options(minimizer_tests PRIVATE -Wall -Wpedantic -Wfatal-errors -Wextra)
+    add_executable(minimizer_tests tests/minimizer_tests.cpp)
+    target_link_libraries(minimizer_tests PRIVATE minimizer gtest_main)
+    target_include_directories(minimizer_tests PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/deps/expression_differentiator)
+    set_target_properties(minimizer_tests PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+
+    if (EXPRMIN_COMPILER_MSVC)
+        target_compile_options(minimizer_tests PRIVATE
+                /W4
+                /permissive-
+                /Zc:__cplusplus
+                /external:W0
+                /external:anglebrackets)
+        set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+        foreach (target gtest gtest_main gmock gmock_main benchmark benchmark_main)
+            if (TARGET ${target})
+                target_compile_options(${target} PRIVATE /W0 /wd4668)
+                set_target_properties(${target} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
+            endif ()
+        endforeach ()
+    elseif (EXPRMIN_COMPILER_GCC)
+        target_compile_options(minimizer_tests PRIVATE -Wall -Wextra -Wpedantic -Wfatal-errors)
+    elseif (EXPRMIN_COMPILER_CLANG)
+        target_compile_options(minimizer_tests PRIVATE -Wall -Wextra -Wpedantic -Wfatal-errors)
+    endif ()
+
+    include(GoogleTest)
+    gtest_discover_tests(minimizer_tests DISCOVERY_MODE PRE_TEST)
 endif ()
-
-enable_testing()
-include(GoogleTest)
-gtest_discover_tests(minimizer_tests DISCOVERY_MODE PRE_TEST)
