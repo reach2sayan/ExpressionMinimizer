@@ -30,12 +30,12 @@ using Quad3DExpr = decltype(make_quad3d());
 
 // ─── Typed test suites: gradient-based N-D optimizers ───────────
 // Bowl2D: (x-1)²+(y-2)²  →  {1,2}, f=0
-using Bowl2DTypes = testing::Types<
-    exprmin::Powell<Bowl2DExpr>, exprmin::Frprmn<Bowl2DExpr>,
-    exprmin::BFGS<Bowl2DExpr>, exprmin::DFrprmn<Bowl2DExpr>,
-    exprmin::DBFGS<Bowl2DExpr>, exprmin::LBFGS<Bowl2DExpr>,
-    exprmin::Dogleg<Bowl2DExpr>,
-    exprmin::Dogleg<Bowl2DExpr, exprmin::HessianMode::ExactAD>>;
+using Bowl2DTypes =
+    testing::Types<exprmin::Powell<Bowl2DExpr>, exprmin::Frprmn<Bowl2DExpr>,
+                   exprmin::BFGS<Bowl2DExpr>, exprmin::DFrprmn<Bowl2DExpr>,
+                   exprmin::DBFGS<Bowl2DExpr>, exprmin::LBFGS<Bowl2DExpr>,
+                   exprmin::Dogleg<Bowl2DExpr>,
+                   exprmin::Dogleg<Bowl2DExpr, exprmin::HessianMode::ExactAD>>;
 template <typename T> class Bowl2DTest : public testing::Test {};
 TYPED_TEST_SUITE(Bowl2DTest, Bowl2DTypes);
 TYPED_TEST(Bowl2DTest, Converges) {
@@ -66,12 +66,12 @@ TYPED_TEST(RosenbrockTest, Converges) {
 }
 
 // Quadratic3D: x²+2y²+3z²  →  {0,0,0}, f=0
-using Quad3DTypes = testing::Types<
-    exprmin::Powell<Quad3DExpr>, exprmin::Frprmn<Quad3DExpr>,
-    exprmin::BFGS<Quad3DExpr>, exprmin::DFrprmn<Quad3DExpr>,
-    exprmin::DBFGS<Quad3DExpr>, exprmin::LBFGS<Quad3DExpr>,
-    exprmin::Dogleg<Quad3DExpr>,
-    exprmin::Dogleg<Quad3DExpr, exprmin::HessianMode::ExactAD>>;
+using Quad3DTypes =
+    testing::Types<exprmin::Powell<Quad3DExpr>, exprmin::Frprmn<Quad3DExpr>,
+                   exprmin::BFGS<Quad3DExpr>, exprmin::DFrprmn<Quad3DExpr>,
+                   exprmin::DBFGS<Quad3DExpr>, exprmin::LBFGS<Quad3DExpr>,
+                   exprmin::Dogleg<Quad3DExpr>,
+                   exprmin::Dogleg<Quad3DExpr, exprmin::HessianMode::ExactAD>>;
 template <typename T> class Quad3DTest : public testing::Test {};
 TYPED_TEST_SUITE(Quad3DTest, Quad3DTypes);
 TYPED_TEST(Quad3DTest, Converges) {
@@ -527,7 +527,8 @@ TEST(Broyden, Nonlinear3D) {
 
 // ─── NLSDogleg ───────────────────────────────────────────────────────────────
 
-// Square 2D NLS: r1=x²+y-3, r2=x+y²-3  →  multiple roots; check any is found (residual→0)
+// Square 2D NLS: r1=x²+y-3, r2=x+y²-3  →  multiple roots; check any is found
+// (residual→0)
 TEST(NLSDogleg, Square2D_Standard) {
   auto x = PV(0.0, 'x');
   auto y = PV(0.0, 'y');
@@ -558,8 +559,7 @@ TEST(NLSDogleg, Overdetermined3r_Standard) {
   auto r1 = x + y - 2.0;
   auto r2 = x - y;
   auto r3 = x - 1.0;
-  exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2), decltype(r3)>>
-      nd{diff::Equation{r1, r2, r3}};
+  exprmin::NLSDogleg nd{diff::Equation{r1, r2, r3}};
   auto p = nd.minimize({0.0, 0.0});
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 1.0, kTol);
