@@ -25,7 +25,9 @@ reverse-mode automatic differentiation — no hand-coded derivatives required.
 | `LBFGS` | Nocedal §7.2 | Limited-memory BFGS (two-loop, circular (s,y) buffer) |
 | `Amoeba` | §10.4 | Nelder-Mead downhill simplex |
 | `SimAnneal` | §10.12 | Simulated annealing + Amoeba cold refinement |
-| `LevenbergMarquardt` | §15.5 | Nonlinear least-squares fitting |
+| `Dogleg` | Powell (1970) | Trust-region dogleg with BFGS Hessian approximation |
+| `LevenbergMarquardt` | §15.5 | Nonlinear least-squares fitting with Marquardt damping |
+| `GaussNewton` | — | Nonlinear least-squares (undamped normal equations) |
 | `AugLag` | — | Augmented Lagrangian constrained minimization |
 
 All multi-dimensional optimizers infer the problem dimensionality at compile
@@ -137,6 +139,45 @@ exprmin::Powell pw{f};
 auto p4 = pw.minimize({0.0, 0.0});
 ```
 
+### Trust-region dogleg
+
+```cpp
+auto x = diff::Variable<double, 'x'>{0.0};
+auto y = diff::Variable<double, 'y'>{0.0};
+auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
+
+exprmin::Dogleg dl{f};
+auto p = dl.minimize({0.0, 0.0}); // p ≈ {1.0, 2.0}
+// dl.fret holds f at the returned minimum
+```
+
+Each iteration picks the longest safe step from three candidates — full Newton
+(inside trust region), Cauchy (gradient descent to boundary), or the dogleg
+interpolation between them. The trust-region radius is adjusted using the
+Powell (libdogleg) ρ-ratio policy. The Hessian is approximated via BFGS.
+
+### Nonlinear least-squares (Gauss-Newton)
+
+```cpp
+auto a = diff::Variable<double, 'a'>{0.0};
+auto b = diff::Variable<double, 'b'>{0.0};
+auto x = diff::Variable<double, 'x'>{0.0};
+auto model = a * exp(-b * x);
+
+using ParamSyms = boost::mp11::mp_list<std::integral_constant<char,'a'>,
+                                       std::integral_constant<char,'b'>>;
+using InputSyms = boost::mp11::mp_list<std::integral_constant<char,'x'>>;
+
+exprmin::GaussNewton<decltype(model), ParamSyms, InputSyms> gn{model};
+
+std::vector<decltype(gn)::DataPoint> data = { /* {InputVec, y_obs, weight} */ };
+auto params = gn.fit(decltype(gn)::ParamVec{1.0, 1.0}, data);
+```
+
+Solves the undamped normal equations `(JᵀJ)·step = Jᵀr` each iteration.
+Converges quadratically near the solution; prefer `LevenbergMarquardt` when
+the initial guess may be far from the optimum.
+
 ### Constrained minimization (Augmented Lagrangian)
 
 ```cpp
@@ -153,7 +194,7 @@ exprmin::AugLag<decltype(f), EqC, IneqC> al{f, EqC{h}, IneqC{g}};
 auto p = al.minimize({0.5, 0.5});
 ```
 
-### Nonlinear least-squares (Levenberg-Marquardt §15.5)
+### Nonlinear least-squares (Levenberg-Marquardt §15.5 / Gauss-Newton)
 
 ```cpp
 auto a = diff::Variable<double, 'a'>{0.0};
@@ -165,10 +206,15 @@ using ParamSyms = boost::mp11::mp_list<std::integral_constant<char,'a'>,
                                        std::integral_constant<char,'b'>>;
 using InputSyms = boost::mp11::mp_list<std::integral_constant<char,'x'>>;
 
+// LM — Marquardt damping, robust to poor initial guesses
 exprmin::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
 
 std::vector<decltype(lm)::DataPoint> data = { /* {InputVec, y_obs, weight} */ };
 auto params = lm.fit(decltype(lm)::ParamVec{1.0, 1.0}, data);
+
+// Gauss-Newton — undamped, quadratic convergence near the solution
+exprmin::GaussNewton<decltype(model), ParamSyms, InputSyms> gn{model};
+auto params2 = gn.fit(decltype(gn)::ParamVec{1.0, 1.0}, data);
 ```
 
 ### Simulated annealing §10.12
