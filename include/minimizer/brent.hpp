@@ -7,22 +7,23 @@
 
 namespace exprmin {
 
-// NR §10.3 — Brent's method: parabolic interpolation with golden-section fallback.
-template <diff::CExpression Expr>
-struct Brent : Bracketmethod<Expr> {
+// NR §10.3 — Brent's method: parabolic interpolation with golden-section
+// fallback.
+template <diff::CExpression Expr> struct Brent : Bracketmethod<Expr> {
   using Base = Bracketmethod<Expr>;
   using value_type = typename Base::value_type;
   using Syms = typename Base::Syms;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
   using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
   using Base::ax;
+  using Base::bracket;
   using Base::bx;
   using Base::cx;
-  using Base::bracket;
   using Base::eval_at;
   using Base::expr;
   static constexpr value_type ZEPS =
-      std::numeric_limits<value_type>::epsilon() * static_cast<value_type>(1.0e-3);
+      std::numeric_limits<value_type>::epsilon() *
+      static_cast<value_type>(1.0e-3);
   static constexpr int ITMAX = 100;
 
 protected:
@@ -32,29 +33,33 @@ protected:
 
 public:
   constexpr value_type get_optimal_value() const { return fmin; }
-  constexpr value_type const& get_optimal_x() const { return xmin; }
-  constexpr value_type& get_optimal_x() { return xmin; }
+  constexpr value_type const &get_optimal_x() const { return xmin; }
+  constexpr value_type &get_optimal_x() { return xmin; }
 
   constexpr explicit Brent(Expr e,
                            value_type tol_ = static_cast<value_type>(3.0e-8))
       : Base(std::move(e)), tol(tol_) {}
 
-  // N-D point evaluation — used when Brent<Expr> is owned by BFGS / LBFGS / LinMin.
+  // N-D point evaluation — used when Brent<Expr> is owned by BFGS / LBFGS /
+  // LinMin.
   constexpr value_type eval_at(const Point &p) {
     expr.update(Syms{}, p);
     return expr.eval();
   }
 
   // 1D-only overloads: only valid for single-variable expressions.
-  constexpr value_type minimize() requires (N == 1) {
+  constexpr value_type minimize()
+    requires(N == 1)
+  {
     auto f = [this](const value_type &x) { return eval_at(x); };
     xmin = detail::brent(f, ax, bx, cx, tol, ZEPS, ITMAX);
     fmin = eval_at(xmin);
     return xmin;
   }
 
-  constexpr value_type minimize(const value_type &ax0,
-                                const value_type &bx0) requires (N == 1) {
+  constexpr value_type minimize(const value_type &ax0, const value_type &bx0)
+    requires(N == 1)
+  {
     bracket(ax0, bx0);
     return minimize();
   }
@@ -76,13 +81,19 @@ template <diff::CExpression Expr, typename T> Brent(Expr, T) -> Brent<Expr>;
 
 // NR §10.4 — Brent + first-derivative (secant on f′ via reverse-mode AD).
 // Inherits all state from Brent; only minimize() differs.
-template <diff::CExpression Expr>
-struct Dbrent : Brent<Expr> {
+template <diff::CExpression Expr> struct Dbrent : Brent<Expr> {
   using Base = Brent<Expr>;
   using Base::Base; // inherit constructors
   using value_type = typename Base::value_type;
   using Syms = typename Base::Syms;
-
+  using Base::ax;
+  using Base::bracket;
+  using Base::bx;
+  using Base::cx;
+  using Base::eval_at;
+  using Base::fmin;
+  using Base::tol;
+  using Base::xmin;
   constexpr value_type minimize() {
     struct Funcd {
       Dbrent &self;
@@ -95,14 +106,13 @@ struct Dbrent : Brent<Expr> {
       }
     };
     Funcd fc{*this};
-    this->xmin = detail::dbrent(fc, this->ax, this->bx, this->cx,
-                                this->tol, Base::ZEPS, Base::ITMAX);
-    this->fmin = this->eval_at(this->xmin);
-    return this->xmin;
+    xmin = detail::dbrent(fc, ax, bx, cx, tol, Base::ZEPS, Base::ITMAX);
+    fmin = eval_at(xmin);
+    return xmin;
   }
 
   constexpr value_type minimize(const value_type &ax0, const value_type &bx0) {
-    this->bracket(ax0, bx0);
+    bracket(ax0, bx0);
     return minimize();
   }
 
@@ -113,9 +123,9 @@ struct Dbrent : Brent<Expr> {
     value_type a = ax0, b = bx0, c;
     value_type fa = fc(a), fb = fc(b), fc_val;
     detail::bracket(fc, a, b, c, fa, fb, fc_val);
-    this->xmin = detail::dbrent(fc, a, b, c, this->tol, Base::ZEPS, Base::ITMAX);
-    this->fmin = fc(this->xmin);
-    return this->xmin;
+    xmin = detail::dbrent(fc, a, b, c, tol, Base::ZEPS, Base::ITMAX);
+    fmin = fc(xmin);
+    return xmin;
   }
 };
 
