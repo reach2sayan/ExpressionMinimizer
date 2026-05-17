@@ -20,7 +20,7 @@ struct Brent : Bracketmethod<Expr> {
   using Base::cx;
   using Base::bracket;
   using Base::eval_at;
-
+  using Base::expr;
   static constexpr value_type ZEPS =
       std::numeric_limits<value_type>::epsilon() * static_cast<value_type>(1.0e-3);
   static constexpr int ITMAX = 100;
@@ -41,8 +41,8 @@ public:
 
   // N-D point evaluation — used when Brent<Expr> is owned by BFGS / LBFGS / LinMin.
   constexpr value_type eval_at(const Point &p) {
-    this->expr.update(Syms{}, p);
-    return this->expr.eval();
+    expr.update(Syms{}, p);
+    return expr.eval();
   }
 
   // 1D-only overloads: only valid for single-variable expressions.
