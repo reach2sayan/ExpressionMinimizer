@@ -2,8 +2,8 @@
 #include <gtest/gtest.h>
 #include <numbers>
 
+#include "../minimizer.hpp"
 #include "expression_differentiator.hpp"
-#include "minimizer/minimizer.hpp"
 #include <Eigen/Dense>
 
 static constexpr double kTol = 1e-5;
