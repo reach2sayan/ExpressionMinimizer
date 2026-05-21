@@ -245,7 +245,9 @@ TEST(Frprmn, FletcherReeves) {
 }
 TEST(DFrprmn, FletcherReeves) {
   auto f = make_bowl2d();
-  auto cg = exprmin::make_frprmn<exprmin::CGMethod::FletcherReeves, exprmin::DLinMin>(f);
+  auto cg =
+      exprmin::make_frprmn<exprmin::CGMethod::FletcherReeves, exprmin::DLinMin>(
+          f);
   auto p = cg.minimize({0.0, 0.0});
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 2.0, kTol);
@@ -558,7 +560,8 @@ TEST(NLSDogleg, Overdetermined3r_Double) {
   auto r1 = x + y - 2.0;
   auto r2 = x - y;
   auto r3 = x - 1.0;
-  auto nd = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2, r3);
+  auto nd =
+      exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2, r3);
   auto p = nd.minimize({0.0, 0.0});
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 1.0, kTol);
