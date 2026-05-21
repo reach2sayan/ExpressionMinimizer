@@ -40,11 +40,7 @@ public:
                             value_type tol_ = static_cast<value_type>(3.0e-8))
       : Base(std::move(e)), tol(tol_) {}
 
-  // Perform golden section search on the already-bracketed triplet
-  // (ax, bx, cx).  Call bracket() first, or set the triplet manually.
   constexpr value_type minimize();
-
-  // Convenience: bracket from (ax0, bx0) then minimize.
   constexpr value_type minimize(const value_type &ax0, const value_type &bx0) {
     bracket(ax0, bx0);
     return minimize();

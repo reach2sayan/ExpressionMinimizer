@@ -17,3 +17,4 @@
 #include "levmar.hpp"
 #include "auglag.hpp"
 #include "lbfgs.hpp"
+#include "make.hpp"

@@ -15,6 +15,9 @@ template <diff::CExpression Expr,
           template <diff::CExpression> class LS1D = Brent, int M = 10>
 struct LBFGS : QuasiNewtonBase<Expr, LS1D> {
   using Base = QuasiNewtonBase<Expr, LS1D>;
+  using Base::eval_at;
+  using Base::fret;
+  using Base::make_line_search_fn;
   using typename Base::Point;
   using typename Base::value_type;
   static constexpr int ITMAX = 200;
@@ -25,11 +28,11 @@ struct LBFGS : QuasiNewtonBase<Expr, LS1D> {
 
   constexpr Point minimize(Point p) {
     const auto eg = [this](const Point &q) { return this->eval_grad(q); };
-    auto ls_fn = this->make_line_search_fn();
+    auto ls_fn = make_line_search_fn();
     detail::LBFGSDirState<value_type, static_cast<int>(Base::N), M> ds;
     p = detail::quasi_newton_impl<value_type, static_cast<int>(Base::N)>(
         eg, std::move(p), this->gtol, ITMAX, ls_fn, ds, this->iter);
-    this->fret = this->eval_at(p);
+    fret = eval_at(p);
     return p;
   }
 };
