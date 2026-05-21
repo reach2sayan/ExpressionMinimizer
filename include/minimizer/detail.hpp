@@ -329,8 +329,9 @@ template <diff::Numeric T, int N, int M> struct LBFGSDirState {
       y_buf[buf_head] = dg;
       rho_buf[buf_head] = T{1} / ys;
       buf_head = (buf_head + 1) % M;
-      if (buf_size < M)
+      if (buf_size < M) {
         ++buf_size;
+      }
     }
   }
 

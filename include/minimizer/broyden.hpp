@@ -6,6 +6,7 @@
 #include <boost/mp11/list.hpp>
 #include <cmath>
 #include <limits>
+#include <ranges>
 
 namespace exprmin {
 
@@ -26,8 +27,7 @@ namespace mp = boost::mp11;
 //   y    = F(x+tp) − F(x)
 //   H   ← H − (H·y + t·p)(p^T·H) / (p^T·H·y)   (rank-1 Broyden update)
 //   fallback: if line search fails, refresh H = −J⁻¹ exactly (via AD)
-template <diff::CExpression... FExprs>
-struct Broyden {
+template <diff::CExpression... FExprs> struct Broyden {
   using System = diff::Equation<FExprs...>;
   static_assert(System::input_dim == System::output_dim,
                 "Broyden requires a square system: #equations == #variables");
@@ -49,8 +49,7 @@ private:
 
   constexpr auto to_arr(const Point &p) const noexcept {
     std::array<value_type, static_cast<std::size_t>(N)> arr;
-    for (int i = 0; i < N; ++i)
-      arr[static_cast<std::size_t>(i)] = p[i];
+    std::copy(p.data(), p.data() + N, arr.begin());
     return arr;
   }
 
@@ -61,8 +60,7 @@ private:
       f[0] = system.evaluate();
     } else {
       const auto f_arr = system.evaluate();
-      for (int i = 0; i < N; ++i)
-        f[i] = f_arr[static_cast<std::size_t>(i)];
+      std::ranges::copy(f_arr | std::views::take(N), f.begin());
     }
     return f;
   }
@@ -70,13 +68,8 @@ private:
   // Exact Jacobian via reverse-mode AD; returns J(p).
   constexpr Matrix eval_J(const Point &p) {
     system.update(Syms{}, to_arr(p));
-    const auto J_arr =
-        system.template jacobian<diff::DiffMode::Reverse>();
-    Matrix J;
-    for (int i = 0; i < N; ++i)
-      for (int j = 0; j < N; ++j)
-        J(i, j) = J_arr[static_cast<std::size_t>(i)]
-                        [static_cast<std::size_t>(j)];
+    const auto J_arr = system.template jacobian<diff::DiffMode::Reverse>();
+    Matrix J = Eigen::Map<const Eigen::MatrixXd>(&J_arr[0][0], N, N);
     return J;
   }
 
@@ -87,10 +80,9 @@ private:
 
 public:
   constexpr value_type residual_norm() const { return last_phi; }
-
   constexpr explicit Broyden(diff::Equation<FExprs...> sys,
-                              value_type tol_ = value_type{1e-10},
-                              int itmax_ = 200)
+                             value_type tol_ = value_type{1e-10},
+                             int itmax_ = 200)
       : system{std::move(sys)}, tol{tol_}, itmax{itmax_} {}
 
   constexpr Point find_root(Point p);
@@ -111,8 +103,9 @@ Broyden<FExprs...>::find_root(Point p) {
 
   for (iter = 0; iter < itmax; ++iter) {
     last_phi = phi;
-    if (phi < tol)
+    if (phi < tol) {
       break;
+    }
 
     // Newton-like step: p_step = H · f
     Point p_step = H * f;
@@ -126,8 +119,9 @@ Broyden<FExprs...>::find_root(Point p) {
     for (int ls = 0; ls < LS_ITMAX; ++ls) {
       f_new = eval_f(p + t * p_step);
       phi1 = f_new.norm();
-      if (phi1 <= phi0 || t <= value_type{0.1})
+      if (phi1 <= phi0 || t <= value_type{0.1}) {
         break;
+      }
       const value_type theta = phi1 / phi0;
       t *= (sqrt(value_type{1} + value_type{6} * theta) - value_type{1}) /
            (value_type{3} * theta);

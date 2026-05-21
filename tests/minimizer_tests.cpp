@@ -238,21 +238,21 @@ TEST(LinMin, DirScaledByStep) {
 
 TEST(Frprmn, FletcherReeves) {
   auto f = make_bowl2d();
-  exprmin::Frprmn<Bowl2DExpr, exprmin::CGMethod::FletcherReeves> cg{f};
+  auto cg = exprmin::make_frprmn<exprmin::CGMethod::FletcherReeves>(f);
   auto p = cg.minimize({0.0, 0.0});
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 2.0, kTol);
 }
 TEST(DFrprmn, FletcherReeves) {
   auto f = make_bowl2d();
-  exprmin::DFrprmn<Bowl2DExpr, exprmin::CGMethod::FletcherReeves> cg{f};
+  auto cg = exprmin::make_frprmn<exprmin::CGMethod::FletcherReeves, exprmin::DLinMin>(f);
   auto p = cg.minimize({0.0, 0.0});
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 2.0, kTol);
 }
 TEST(LBFGS, Quadratic3DWithArmijo) {
   auto f = make_quad3d();
-  exprmin::LBFGS<Quad3DExpr, exprmin::Armijo> lbfgs{f};
+  auto lbfgs = exprmin::make_lbfgs<exprmin::Armijo>(f);
   auto p = lbfgs.minimize({3.0, 3.0, 3.0});
   EXPECT_NEAR(p[0], 0.0, kTol);
   EXPECT_NEAR(p[1], 0.0, kTol);
@@ -342,9 +342,7 @@ TEST(LevenbergMarquardt, LinearModel) {
   auto b = diff::Variable<double, 'b'>{0.0};
   auto x = diff::Variable<double, 'x'>{0.0};
   auto model = a * x + b;
-  using ParamSyms = sym_list<'a', 'b'>;
-  using InputSyms = sym_list<'x'>;
-  exprmin::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
+  auto lm = exprmin::make_lm<'x'>(model);
   std::vector<decltype(lm)::DataPoint> data;
   for (int i = 0; i < 10; ++i)
     data.push_back(make_pt<decltype(lm)>(i, 2.0 * i + 3.0));
@@ -357,9 +355,7 @@ TEST(LevenbergMarquardt, ExponentialDecay) {
   auto b = diff::Variable<double, 'b'>{0.0};
   auto x = diff::Variable<double, 'x'>{0.0};
   auto model = a * exp(-b * x);
-  using ParamSyms = sym_list<'a', 'b'>;
-  using InputSyms = sym_list<'x'>;
-  exprmin::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
+  auto lm = exprmin::make_lm<'x'>(model);
   std::vector<decltype(lm)::DataPoint> data;
   for (int i = 0; i < 15; ++i) {
     double xi = 0.2 * i;
@@ -376,9 +372,7 @@ TEST(LevenbergMarquardt, Gaussian) {
   auto x = diff::Variable<double, 'x'>{0.0};
   auto two = diff::Constant<double>{2.0};
   auto model = a * exp(-(x - b) * (x - b) / (two * c * c));
-  using ParamSyms = sym_list<'a', 'b', 'c'>;
-  using InputSyms = sym_list<'x'>;
-  exprmin::LevenbergMarquardt<decltype(model), ParamSyms, InputSyms> lm{model};
+  auto lm = exprmin::make_lm<'x'>(model);
   std::vector<decltype(lm)::DataPoint> data;
   for (int i = 0; i < 20; ++i) {
     double xi = -3.0 + 0.3 * i;
@@ -408,9 +402,7 @@ TEST(GaussNewton, LinearModel) {
   auto b = diff::Variable<double, 'b'>{0.0};
   auto x = diff::Variable<double, 'x'>{0.0};
   auto model = a * x + b;
-  using ParamSyms = sym_list<'a', 'b'>;
-  using InputSyms = sym_list<'x'>;
-  exprmin::GaussNewton<decltype(model), ParamSyms, InputSyms> gn{model};
+  auto gn = exprmin::make_gn<'x'>(model);
   std::vector<decltype(gn)::DataPoint> data;
   for (int i = 0; i < 10; ++i)
     data.push_back(make_pt<decltype(gn)>(i, 2.0 * i + 3.0));
@@ -423,9 +415,7 @@ TEST(GaussNewton, ExponentialDecay) {
   auto b = diff::Variable<double, 'b'>{0.0};
   auto x = diff::Variable<double, 'x'>{0.0};
   auto model = a * exp(-b * x);
-  using ParamSyms = sym_list<'a', 'b'>;
-  using InputSyms = sym_list<'x'>;
-  exprmin::GaussNewton<decltype(model), ParamSyms, InputSyms> gn{model};
+  auto gn = exprmin::make_gn<'x'>(model);
   std::vector<decltype(gn)::DataPoint> data;
   for (int i = 0; i < 15; ++i) {
     double xi = 0.2 * i;
@@ -534,8 +524,7 @@ TEST(NLSDogleg, Square2D_Standard) {
   auto y = PV(0.0, 'y');
   auto r1 = x * x + y - 3.0;
   auto r2 = x + y * y - 3.0;
-  exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2)>> nd{
-      diff::Equation{r1, r2}};
+  auto nd = exprmin::make_nls_dogleg(r1, r2);
   nd.minimize({2.0, 0.0});
   EXPECT_NEAR(nd.get_optimal_value(), 0.0, kTol * kTol);
 }
@@ -545,9 +534,7 @@ TEST(NLSDogleg, Square2D_Double) {
   auto y = PV(0.0, 'y');
   auto r1 = x * x + y - 3.0;
   auto r2 = x + y * y - 3.0;
-  exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2)>,
-                     exprmin::DoglegVariant::Double>
-      nd{diff::Equation{r1, r2}};
+  auto nd = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2);
   nd.minimize({2.0, 0.0});
   EXPECT_NEAR(nd.get_optimal_value(), 0.0, kTol * kTol);
 }
@@ -571,9 +558,7 @@ TEST(NLSDogleg, Overdetermined3r_Double) {
   auto r1 = x + y - 2.0;
   auto r2 = x - y;
   auto r3 = x - 1.0;
-  exprmin::NLSDogleg<diff::Equation<decltype(r1), decltype(r2), decltype(r3)>,
-                     exprmin::DoglegVariant::Double>
-      nd{diff::Equation{r1, r2, r3}};
+  auto nd = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2, r3);
   auto p = nd.minimize({0.0, 0.0});
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 1.0, kTol);
@@ -587,8 +572,7 @@ TEST(Subspace2D, Square2D) {
   auto y = PV(0.0, 'y');
   auto r1 = x * x + y - 3.0;
   auto r2 = x + y * y - 3.0;
-  exprmin::Subspace2D<diff::Equation<decltype(r1), decltype(r2)>> s2{
-      diff::Equation{r1, r2}};
+  auto s2 = exprmin::make_subspace2d(r1, r2);
   s2.minimize({2.0, 0.0});
   EXPECT_NEAR(s2.get_optimal_value(), 0.0, kTol * kTol);
 }
@@ -599,8 +583,7 @@ TEST(Subspace2D, Overdetermined3r) {
   auto r1 = x + y - 2.0;
   auto r2 = x - y;
   auto r3 = x - 1.0;
-  exprmin::Subspace2D<diff::Equation<decltype(r1), decltype(r2), decltype(r3)>>
-      s2{diff::Equation{r1, r2, r3}};
+  auto s2 = exprmin::make_subspace2d(r1, r2, r3);
   auto p = s2.minimize({0.0, 0.0});
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 1.0, kTol);

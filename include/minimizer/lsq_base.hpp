@@ -96,8 +96,8 @@ constexpr auto LeastSquaresBase<Expr, ParamSyms, InputSyms>::eval_rJ(
     expr.update(AllSyms{}, make_all_vec(params, data[i].input));
     r[i] = data[i].weight * (data[i].target - expr);
     const auto g = diff::gradient<diff::DiffMode::Reverse>(expr);
-    for (std::size_t j = 0; j < N; ++j) {
-      J(i, static_cast<int>(j)) = -data[i].weight * g[PARAM_IDX[j]];
+    for (int j = 0; j < static_cast<int>(N); ++j) {
+      J(i, j) = -data[i].weight * g[PARAM_IDX[j]];
     }
   }
   return std::pair{r, J};
