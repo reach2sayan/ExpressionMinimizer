@@ -152,7 +152,7 @@ auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
 // Default: BFGS Hessian approximation (rank-2 updates, no second derivatives)
 exprmin::Dogleg dl{f};
 auto p = dl.minimize({0.0, 0.0}); // p ≈ {1.0, 2.0}
-// dl.fret holds f at the returned minimum
+dl.get_optimal_value();            // f at the returned minimum
 
 // ExactAD: full Hessian recomputed every iteration via forward-over-reverse AD
 exprmin::Dogleg<decltype(f), exprmin::HessianMode::ExactAD> dl_exact{f};
@@ -238,7 +238,7 @@ auto params2 = gn.fit(decltype(gn)::ParamVec{1.0, 1.0}, data);
 // SimAnneal(expr, T0, cooling, epoch_steps)
 exprmin::SimAnneal sa{f, 1.0, 0.95, 100};
 auto p = sa.minimize({3.0, 0.0}, /*delta=*/1.0);
-// sa.fret holds f at the returned minimum
+sa.get_optimal_value(); // f at the returned minimum
 ```
 
 ### Broyden root finding
@@ -289,6 +289,50 @@ s2.get_optimal_value();
 | `NLSDogleg<..., DoglegVariant::Standard>` | Classical 3-case Powell dogleg | Cauchy / GN / dogleg interpolation |
 | `NLSDogleg<..., DoglegVariant::Double>` | Dennis & Mei (1979) double dogleg | Scales GN by t before interpolation |
 | `Subspace2D` | 2D subspace optimal step | Solves quartic for λ via companion-matrix eigenvalues |
+
+## Factory helpers
+
+`#include "minimizer/make.hpp"` provides factory functions that deduce all template parameters when CTAD alone is insufficient.
+
+### NLS residual packing
+
+```cpp
+// Pack residuals without wrapping them in diff::Equation by hand.
+auto nd  = exprmin::make_nls_dogleg(r1, r2);            // Standard variant
+auto nd2 = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2);
+auto s2  = exprmin::make_subspace2d(r1, r2);
+```
+
+### Curve-fitting symbol partition
+
+Specify the *input* variable characters as template arguments; parameter symbols are deduced as the complement.
+
+```cpp
+auto x = PV(0.0, 'x');
+auto a = PV(0.0, 'a');
+auto b = PV(0.0, 'b');
+auto model = a * exp(-b * x);
+
+// 'x' is the input; 'a','b' are inferred as parameters
+auto lm = exprmin::make_lm<'x'>(model);
+auto gn = exprmin::make_gn<'x'>(model);
+
+std::vector<decltype(lm)::DataPoint> data = { /* {InputVec, y_obs, weight} */ };
+auto params = lm.fit(decltype(lm)::ParamVec{1.0, 1.0}, data);
+```
+
+### Optimizer policy helpers
+
+```cpp
+// L-BFGS with explicit line-search policy and history size
+auto lbfgs5 = exprmin::make_lbfgs<exprmin::Armijo, 5>(f);
+
+// Conjugate gradient with explicit CG method and line-minimizer
+auto cg = exprmin::make_frprmn<exprmin::CGMethod::FletcherReeves>(f);
+
+// Dogleg with explicit Hessian mode
+auto dl = exprmin::make_dogleg<exprmin::HessianMode::ExactAD>(f);
+```
 
 ## License
 
