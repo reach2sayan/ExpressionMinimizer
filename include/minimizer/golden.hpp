@@ -89,7 +89,8 @@ constexpr typename Golden<Expr>::value_type Golden<Expr>::minimize() {
   } // x0–x1 is now the smaller sub-interval
 
   auto f1 = eval_at(x1); // bracket endpoints ax, cx already have known f-values
-  auto f2 = eval_at(x2); // from bracket(); only interior trial points are evaluated here
+  auto f2 = eval_at(
+      x2); // from bracket(); only interior trial points are evaluated here
 
   while (abs(x3 - x0) > tol * (abs(x1) + abs(x2))) {
     if (f2 < f1) { // minimum in [x1, x3]: discard x0, shift left boundary right

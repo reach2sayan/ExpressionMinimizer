@@ -8,42 +8,61 @@ reverse-mode automatic differentiation — no hand-coded derivatives required.
 
 ## Algorithms
 
-| Class | NR ref | Method |
+### Unconstrained minimization
+
+| Class | Reference | Method |
 |---|---|---|
-| `Bracketmethod` | §10.1 | Downhill bracket search |
-| `Golden` | §10.2 | Golden-section search |
-| `Brent` | §10.3 | Parabolic interpolation + golden fallback |
-| `Dbrent` | §10.4 | Brent with derivative (secant on f′ via reverse AD) |
-| `LinMin` | §10.5 | Line minimization along a direction (uses `Brent`) |
-| `DLinMin` | §10.5 | Line minimization with derivative (uses `Dbrent`) |
-| `Powell` | §10.5 | Powell's conjugate-direction method |
-| `Frprmn` | §10.6 | Fletcher-Reeves / Polak-Ribière conjugate gradient |
-| `DFrprmn` | §10.6 | Conjugate gradient with `DLinMin` line search |
-| `BFGS` | §10.7 | Quasi-Newton with full N×N inverse-Hessian |
-| `DBFGS` | §10.7 | BFGS with derivative line search (`Dbrent`) |
-| `ABFGS` | §10.7 | BFGS with Armijo backtracking line search |
+| `Bracketmethod` | NR §10.1 | Downhill bracket search |
+| `Golden` | NR §10.2 | Golden-section search |
+| `Brent` | NR §10.3 | Parabolic interpolation + golden-section fallback |
+| `Dbrent` | NR §10.4 | Brent with derivative (secant on f′ via reverse AD) |
+| `LinMin` | NR §10.5 | Line minimization along a direction (uses `Brent`) |
+| `DLinMin` | NR §10.5 | Line minimization with derivative (uses `Dbrent`) |
+| `Amoeba` | NR §10.5 | Nelder–Mead downhill simplex |
+| `SimAnneal` | NR §10.12 | Simulated annealing + Amoeba cold refinement |
+| `Powell` | NR §10.6 | Powell's conjugate-direction method |
+| `Frprmn` / `DFrprmn` | NR §10.7 | Fletcher–Reeves / Polak–Ribière conjugate gradient |
+| `BFGS` | NR §10.9 | Quasi-Newton, rank-2 BFGS inverse-Hessian |
+| `DFP` | NR §10.9 | Quasi-Newton, rank-2 DFP inverse-Hessian |
+| `SR1` | Nocedal §6.2 | Quasi-Newton, rank-1 symmetric inverse-Hessian |
+| `DBFGS` / `ABFGS` | — | BFGS + Dbrent / Armijo line search |
 | `LBFGS` | Nocedal §7.2 | Limited-memory BFGS (two-loop, circular (s,y) buffer) |
-| `Amoeba` | §10.4 | Nelder-Mead downhill simplex |
-| `SimAnneal` | §10.12 | Simulated annealing + Amoeba cold refinement |
-| `Dogleg` | Powell (1970) | Trust-region dogleg with BFGS Hessian approximation |
-| `NLSDogleg` | Powell (1970) | NLS trust-region Powell dogleg (classical + double variant) for ½‖R(θ)‖² |
-| `Subspace2D` | Kaufman (1999) | NLS trust-region 2D subspace step (quartic Lagrange multiplier) for ½‖R(θ)‖² |
-| `LevenbergMarquardt` | §15.5 | Nonlinear least-squares fitting with Marquardt damping |
-| `GaussNewton` | — | Nonlinear least-squares (undamped normal equations) |
-| `AugLag` | — | Augmented Lagrangian constrained minimization |
+| `Dogleg` | N&W §4.1 | Trust-region dogleg (BFGS or exact-AD Hessian) |
+
+### Nonlinear least squares
+
+| Class | Reference | Method |
+|---|---|---|
+| `NLSDogleg` | N&W §10.1 | NLS trust-region Powell dogleg (Standard + Double variant) |
+| `Subspace2D` | Byrd et al. (1988) | NLS trust-region 2D subspace step (quartic secular equation) |
+| `LevenbergMarquardt` | NR §15.5 | Marquardt-damped normal equations |
+| `GaussNewton` | N&W §10.2 | Undamped normal equations |
+
+### Constrained minimization
+
+| Class | Reference | Method |
+|---|---|---|
+| `AugLag` | Birgin & Martínez (2014) | Augmented Lagrangian (equality + inequality constraints) |
+| `SimplexLP` | NR §10.10 | Two-phase full-tableau simplex (LP, inequality form) |
+| `InteriorPointLP` | NR §10.11 | Primal-dual infeasible interior-point method (LP, standard form) |
+
+### Root finding
+
+| Class | Reference | Method |
+|---|---|---|
 | `Broyden` | Broyden (1965) | Rank-1 quasi-Newton root finder for F(x) = 0 |
 
-All multi-dimensional optimizers infer the problem dimensionality at compile
-time from the set of `Variable` symbols in the expression tree.
+All multi-dimensional optimizers infer the problem dimension at compile time
+from the `Variable` symbols in the expression tree.
 
 ## Line search policies
 
-`BFGS` and `LBFGS` accept a line search policy as a template-template
-parameter:
+`BFGS`, `DFP`, `SR1`, and `LBFGS` accept a line search policy as a
+template-template parameter:
 
 | Policy | Description |
 |---|---|
-| `Brent` (default) | Bracket + parabolic/golden-section 1D minimization |
+| `Brent` (default) | Bracket + parabolic/golden-section 1-D minimization |
 | `Dbrent` | Brent with first-derivative (secant on f′) |
 | `Armijo` | Backtracking sufficient-decrease (no bracketing required) |
 
@@ -52,12 +71,12 @@ auto x = PV(0.0, 'x');
 auto y = PV(0.0, 'y');
 auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
 
-exprmin::BFGS              bfgs{f};                                    // Brent (default)
-exprmin::DBFGS<decltype(f)> dbfgs{f};                                  // == BFGS<Expr, Dbrent>
-exprmin::ABFGS<decltype(f)> abfgs{f};                                  // == BFGS<Expr, Armijo>
-exprmin::LBFGS             lbfgs{f};                                   // Brent (default)
-auto albfgs = exprmin::make_lbfgs<exprmin::Armijo>(f);                 // Armijo
-auto lbfgs5 = exprmin::make_lbfgs<exprmin::Brent, 5>(f);              // M=5 history pairs
+exprmin::BFGS               bfgs{f};                           // Brent (default)
+exprmin::DBFGS<decltype(f)> dbfgs{f};                          // BFGS<Expr, Dbrent>
+exprmin::ABFGS<decltype(f)> abfgs{f};                          // BFGS<Expr, Armijo>
+exprmin::LBFGS              lbfgs{f};                          // Brent (default)
+auto albfgs = exprmin::make_lbfgs<exprmin::Armijo>(f);         // Armijo
+auto lbfgs5 = exprmin::make_lbfgs<exprmin::Brent, 5>(f);      // M=5 history pairs
 ```
 
 ## Dependencies
@@ -92,15 +111,14 @@ ctest --test-dir build --output-on-failure
 
 ## Usage
 
-All headers are included via the umbrella header:
+Include the umbrella header (pulls in all algorithms):
 
 ```cpp
-#include "minimizer/minimizer.hpp"
-#include "minimizer/make.hpp"           // factory helpers (optional)
+#include "minimizer.hpp"
 #include "expression_differentiator.hpp"
 ```
 
-### 1D minimization
+### 1-D minimization
 
 ```cpp
 auto x = PV(0.0, 'x');
@@ -108,7 +126,7 @@ auto f = (x - 3.0) * (x - 3.0);
 
 // Brent §10.3 — no derivatives needed
 exprmin::Brent b{f};
-double xmin = b.minimize(0.0, 5.0); // bracket from [0, 5], then minimize
+double xmin = b.minimize(0.0, 5.0);   // bracket from [0, 5], then minimize
 
 // Dbrent §10.4 — uses f′ from reverse-mode AD for faster convergence
 exprmin::Dbrent db{f};
@@ -122,15 +140,19 @@ auto x = PV(0.0, 'x');
 auto y = PV(0.0, 'y');
 auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
 
-// BFGS §10.7 — quasi-Newton, full inverse-Hessian approximation
+// BFGS §10.9 — quasi-Newton, full inverse-Hessian approximation
 exprmin::BFGS bfgs{f};
-auto p = bfgs.minimize({0.0, 0.0}); // p ≈ {1.0, 2.0}
+auto p = bfgs.minimize({0.0, 0.0});   // p ≈ {1.0, 2.0}
+
+// DFP / SR1 — alternative quasi-Newton update formulas
+exprmin::DFP<decltype(f)> dfp{f};
+exprmin::SR1<decltype(f)> sr1{f};
 
 // L-BFGS — same interface, O(M·N) memory instead of O(N²)
 exprmin::LBFGS lbfgs{f};
 auto p2 = lbfgs.minimize({0.0, 0.0});
 
-// Conjugate gradient — Polak-Ribière (default) or Fletcher-Reeves
+// Conjugate gradient — Polak–Ribière (default) or Fletcher–Reeves
 exprmin::Frprmn cg{f};
 auto p3 = cg.minimize({0.0, 0.0});
 
@@ -140,9 +162,13 @@ auto cg_fr = exprmin::make_frprmn<exprmin::CGMethod::FletcherReeves>(f);
 exprmin::DFrprmn<decltype(f)> dcg{f};
 exprmin::DBFGS<decltype(f)>   dbfgs{f};
 
-// Powell §10.5 — no derivatives, conjugate-direction
+// Powell §10.6 — no derivatives, conjugate-direction
 exprmin::Powell pw{f};
 auto p4 = pw.minimize({0.0, 0.0});
+
+// Nelder–Mead §10.5 — derivative-free simplex
+exprmin::Amoeba am{f};
+auto p5 = am.minimize({0.0, 0.0}, /*delta=*/1.0);
 ```
 
 ### Trust-region dogleg
@@ -154,8 +180,8 @@ auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
 
 // Default: BFGS Hessian approximation (rank-2 updates, no second derivatives)
 exprmin::Dogleg dl{f};
-auto p = dl.minimize({0.0, 0.0}); // p ≈ {1.0, 2.0}
-dl.get_optimal_value();            // f at the returned minimum
+auto p = dl.minimize({0.0, 0.0});   // p ≈ {1.0, 2.0}
+dl.get_optimal_value();              // f at the returned minimum
 
 // ExactAD: full Hessian recomputed every iteration via forward-over-reverse AD
 auto dl_exact = exprmin::make_dogleg<exprmin::HessianMode::ExactAD>(f);
@@ -165,51 +191,12 @@ auto p2 = dl_exact.minimize({0.0, 0.0});
 Each iteration picks the longest safe step from three candidates — full Newton
 (inside trust region), Cauchy (gradient descent to boundary), or the dogleg
 interpolation between them. The trust-region radius is adjusted using the
-Powell (libdogleg) ρ-ratio policy.
+Powell/libdogleg ρ-ratio policy.
 
-A compile-time `HessianMode` template parameter controls how the Hessian is supplied:
-
-| Mode | Description |
+| `HessianMode` | Description |
 |---|---|
-| `HessianMode::BFGS` (default) | Rank-2 BFGS updates from gradient differences — O(N²) storage, no second derivatives |
-| `HessianMode::ExactAD` | Exact Hessian via `diff::derivative_tensor<2>` each iteration — fewer iterations, costs N forward passes |
-
-### Nonlinear least-squares (Levenberg-Marquardt §15.5 / Gauss-Newton)
-
-```cpp
-auto a = PV(0.0, 'a');
-auto b = PV(0.0, 'b');
-auto x = PV(0.0, 'x');
-auto model = a * exp(-b * x);
-
-// 'x' is the input variable; 'a','b' are inferred as parameters
-auto lm = exprmin::make_lm<'x'>(model); // LM — Marquardt damping
-auto gn = exprmin::make_gn<'x'>(model); // Gauss-Newton — undamped
-
-std::vector<decltype(lm)::DataPoint> data = { /* {InputVec, y_obs, weight} */ };
-auto params  = lm.fit(decltype(lm)::ParamVec{1.0, 1.0}, data);
-auto params2 = gn.fit(decltype(gn)::ParamVec{1.0, 1.0}, data);
-```
-
-`LevenbergMarquardt` adds Marquardt damping and is robust to poor initial
-guesses. `GaussNewton` solves the undamped normal equations `(JᵀJ)·step = Jᵀr`
-and converges quadratically near the solution.
-
-### Constrained minimization (Augmented Lagrangian)
-
-```cpp
-auto x = PV(0.0, 'x');
-auto y = PV(0.0, 'y');
-auto f = x * x + y * y;
-auto h = x + y - 1.0;   // equality: x + y = 1
-auto g = -x;             // inequality: x ≥ 0
-
-using EqC   = diff::Equation<decltype(h)>;
-using IneqC = diff::Equation<decltype(g)>;
-
-exprmin::AugLag<decltype(f), EqC, IneqC> al{f, EqC{h}, IneqC{g}};
-auto p = al.minimize({0.5, 0.5});
-```
+| `BFGS` (default) | Rank-2 BFGS updates from gradient differences — O(N²) storage, no second derivatives |
+| `ExactAD` | Exact Hessian via `diff::derivative_tensor<2>` each iteration — fewer iterations, costs N forward passes |
 
 ### Simulated annealing §10.12
 
@@ -221,28 +208,35 @@ auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
 // SimAnneal(expr, T0, cooling, epoch_steps)
 exprmin::SimAnneal sa{f, 1.0, 0.95, 100};
 auto p = sa.minimize({3.0, 0.0}, /*delta=*/1.0);
-sa.get_optimal_value(); // f at the returned minimum
+sa.get_optimal_value();   // f at the returned minimum
 ```
 
-### Broyden root finding
+### Nonlinear least squares (Levenberg–Marquardt §15.5 / Gauss–Newton)
 
 ```cpp
+auto a = PV(0.0, 'a');
+auto b = PV(0.0, 'b');
 auto x = PV(0.0, 'x');
-auto y = PV(0.0, 'y');
-auto f1 = x * x + y * y - 4.0;  // x² + y² = 4
-auto f2 = x - y;                  // x = y  →  root: {√2, √2}
+auto model = a * exp(-b * x);
 
-exprmin::Broyden br{diff::Equation{f1, f2}};
-auto p = br.find_root({1.0, 0.5}); // p ≈ {√2, √2}
-// br.residual_norm() < tol
+// 'x' is the input variable; 'a','b' are inferred as parameters
+auto lm = exprmin::make_lm<'x'>(model);   // LM — Marquardt damping
+auto gn = exprmin::make_gn<'x'>(model);   // Gauss-Newton — undamped
+
+std::vector<decltype(lm)::DataPoint> data = { /* {InputVec, y_obs, weight} */ };
+auto params  = lm.fit(decltype(lm)::ParamVec{1.0, 1.0}, data);
+auto params2 = gn.fit(decltype(gn)::ParamVec{1.0, 1.0}, data);
 ```
 
-Uses exact reverse-mode AD Jacobian (instead of finite differences as in GSL) for initialization and the fallback Jacobian recomputation. Each iteration applies a rank-1 Broyden update to the approximate inverse Jacobian H ≈ −J⁻¹, with Hebden backtracking on ‖F‖.
+`LevenbergMarquardt` adds Marquardt damping (λ·diag(JᵀJ)) and is robust to
+poor initial guesses. `GaussNewton` solves the undamped normal equations and
+converges quadratically near the solution when the residual is small.
 
-### NLS trust-region (NLSDogleg / Subspace2D)
+### NLS trust region (NLSDogleg / Subspace2D)
 
-Both minimize ½‖R(θ)‖² where R : ℝᴺ → ℝᴹ (M ≥ N) is given as `diff::Equation<R1,...,RM>`.
-The Gauss-Newton Hessian B = JᵀJ is recomputed from the exact AD Jacobian at each accepted step.
+Both minimize ½‖R(θ)‖² where R : ℝᴺ → ℝᴹ (M ≥ N) is given as
+`diff::Equation<R1,...,RM>`. The Gauss-Newton Hessian B = JᵀJ is recomputed
+from the exact AD Jacobian at each accepted step.
 
 ```cpp
 auto x = PV(0.0, 'x');
@@ -253,12 +247,12 @@ auto r2 = x + y * y - 3.0;
 // NLSDogleg — classical Powell dogleg (Standard variant, default)
 auto nd = exprmin::make_nls_dogleg(r1, r2);
 auto p = nd.minimize({2.0, 0.0});
-nd.get_optimal_value();  // ½‖r‖² at returned point
+nd.get_optimal_value();   // ½‖r‖² at returned point
 
-// Double dogleg variant (Dennis & Mei 1979) — scales GN step before interpolation
+// Double dogleg — scales GN step by t ∈ [0.2, 1] before interpolation
 auto nd2 = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2);
 
-// Subspace2D — minimizes quadratic model over span{Cauchy, GN} ∩ TR ball
+// Subspace2D — minimizes the quadratic model over span{Cauchy, GN} ∩ TR ball
 auto s2 = exprmin::make_subspace2d(r1, r2);
 auto p2 = s2.minimize({2.0, 0.0});
 s2.get_optimal_value();
@@ -266,17 +260,70 @@ s2.get_optimal_value();
 
 | Class | Step selection | Notes |
 |---|---|---|
-| `NLSDogleg<..., DoglegVariant::Standard>` | Classical 3-case Powell dogleg | Cauchy / GN / dogleg interpolation |
-| `NLSDogleg<..., DoglegVariant::Double>` | Dennis & Mei (1979) double dogleg | Scales GN by t before interpolation |
+| `NLSDogleg<..., Standard>` | Classical 3-case Powell dogleg | Cauchy / GN / dogleg interpolation |
+| `NLSDogleg<..., Double>` | Byrd–Schnabel–Shultz double dogleg | Scales GN by t ∈ [0.2,1] before interpolation |
 | `Subspace2D` | 2D subspace optimal step | Solves quartic for λ via companion-matrix eigenvalues |
+
+### Constrained minimization (Augmented Lagrangian)
+
+```cpp
+auto x = PV(0.0, 'x');
+auto y = PV(0.0, 'y');
+auto f = x * x + y * y;
+auto h = x + y - 1.0;   // equality:   x + y = 1
+auto g = -x;             // inequality: x ≥ 0
+
+exprmin::AugLag al{f, exprmin::make_eq(h), exprmin::make_ineq(g)};
+auto p = al.minimize({0.5, 0.5});
+```
+
+The outer loop follows Birgin & Martínez Algorithm 3.1: auto-scaled initial ρ,
+BFGS+Armijo inner solves, dual updates for λ (equality) and μ (inequality),
+and adaptive penalty growth when constraint progress stalls.
+
+### Linear programming
+
+```cpp
+// SimplexLP — two-phase tableau simplex (inequality form: Ax ≤ b, x ≥ 0)
+exprmin::SimplexLP<> lp;
+auto x = lp.solve(A, b, c);   // min cᵀx s.t. Ax ≤ b, x ≥ 0
+// lp.status == SimplexLP<>::Status::Optimal
+
+// InteriorPointLP — primal-dual interior-point (standard form: Ax = b, x ≥ 0)
+exprmin::InteriorPointLP<> ip;
+auto x2 = ip.solve(A_eq, b_eq, c_eq);
+// ip.status == InteriorPointLP<>::Status::Optimal
+```
+
+Both solvers set a `status` member (`Optimal`, `Infeasible`, `Unbounded`,
+`MaxIter`) and store the objective value in `fret` after each `solve()`.
+
+### Broyden root finding
+
+```cpp
+auto x = PV(0.0, 'x');
+auto y = PV(0.0, 'y');
+auto f1 = x * x + y * y - 4.0;   // x² + y² = 4
+auto f2 = x - y;                   // x = y  →  root: {√2, √2}
+
+exprmin::Broyden br{diff::Equation{f1, f2}};
+auto p = br.find_root({1.0, 0.5});   // p ≈ {√2, √2}
+// br.residual_norm() < tol
+```
+
+Uses the exact reverse-mode AD Jacobian (instead of finite differences) for the
+initial H₀ = −J(x₀)⁻¹ and for fallback refreshes after a failed line search.
+Each iteration applies a rank-1 Broyden update to H ≈ −J⁻¹, with Hebden
+backtracking on ‖F‖.
 
 ## Factory helpers
 
-`#include "minimizer/make.hpp"` provides factory functions that deduce all template parameters when CTAD alone is insufficient.
+`make.hpp` (included via `minimizer.hpp`) provides factory functions that deduce
+all template parameters from their arguments — useful when CTAD alone is
+insufficient (non-default policies, `HessianMode`, CG method, LBFGS history
+size, NLS residual packing, or the curve-fitting symbol partition).
 
-The factory functions in `make.hpp` deduce all template parameters from their arguments — useful when CTAD alone is insufficient (non-default policies, HessianMode, CG method, LBFGS history size, NLS residual packing, or the curve-fitting symbol partition).
-
-| Factory | Equivalent class |
+| Factory | Equivalent |
 |---|---|
 | `make_nls_dogleg(r1, r2, ...)` | `NLSDogleg<Equation<...>>` |
 | `make_nls_dogleg<DoglegVariant::Double>(r1, ...)` | `NLSDogleg<Equation<...>, Double>` |

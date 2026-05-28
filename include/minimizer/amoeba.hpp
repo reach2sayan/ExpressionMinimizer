@@ -3,7 +3,9 @@
 #include "expressions.hpp"
 #include "traits.hpp"
 #include <Eigen/Dense>
+#include <array>
 #include <boost/mp11/list.hpp>
+#include <random>
 #include <ranges>
 
 namespace exprmin {
@@ -72,6 +74,79 @@ amotry_impl(auto &&ptr,
   return ytry;
 }
 
+/**
+ * @brief Buffered normal-variate generator.
+ *
+ * Pre-generates @p BufSize normal-distributed values from @p RNG and serves
+ * them from an internal array, refilling only when exhausted.  Amortises the
+ * per-call overhead of std::normal_distribution across batches.
+ *
+ * @tparam T       Scalar type.
+ * @tparam RNG     A UniformRandomBitGenerator (default std::mt19937).
+ * @tparam BufSize Number of values to pre-generate per refill (default 512).
+ */
+template <typename T, typename RNG = std::mt19937, std::size_t BufSize = 512>
+class RngBuffer {
+  RNG rng_;
+  std::normal_distribution<T> dist_{};
+  std::array<T, BufSize> buf_;
+  std::size_t pos_ = BufSize;
+
+  void refill() {
+    for (auto &v : buf_)
+      v = dist_(rng_);
+    pos_ = 0;
+  }
+
+public:
+  explicit RngBuffer(RNG rng = RNG{std::random_device{}()})
+      : rng_{std::move(rng)} {}
+
+  T operator()() {
+    if (pos_ == BufSize)
+      refill();
+    return buf_[pos_++];
+  }
+};
+
+struct NoRng {}; ///< Zero-size placeholder used when RandomInit = false.
+
+/**
+ * @brief Constructs an (N+1)-vertex simplex around a centre point using a
+ * random orthonormal basis.
+ *
+ * Column 0 is @p p; column i+1 is @p p displaced by @p delta along the i-th
+ * column of a uniformly random orthonormal basis (obtained via thin QR of a
+ * Gaussian random matrix).  This avoids axis-aligned bias and is the
+ * initialisation used by GSL's @c nmsimplex2rand.
+ *
+ * @tparam T         Scalar type.
+ * @tparam N         Dimension of the space.
+ * @tparam NormalGen A callable returning T-distributed normal variates.
+ * @param p          Centre vertex.
+ * @param delta      Side-length of the initial simplex.
+ * @param gen        Normal-variate source (e.g. an RngBuffer<T>).
+ * @return N×(N+1) matrix whose columns are the simplex vertices.
+ */
+template <typename T, int N, typename NormalGen>
+Eigen::Matrix<T, N, N + 1> make_simplex_rand(const Eigen::Vector<T, N> &p,
+                                              const T &delta,
+                                              NormalGen &&gen) {
+  Eigen::Matrix<T, N, N> A =
+      Eigen::Matrix<T, N, N>::NullaryExpr([&](Eigen::Index, Eigen::Index) {
+        return gen();
+      });
+  const Eigen::Matrix<T, N, N> Q =
+      Eigen::HouseholderQR<Eigen::Matrix<T, N, N>>{A}.householderQ() *
+      Eigen::Matrix<T, N, N>::Identity();
+
+  Eigen::Matrix<T, N, N + 1> s;
+  s.col(0) = p;
+  for (int i = 0; i < N; ++i)
+    s.col(i + 1) = p + delta * Q.col(i);
+  return s;
+}
+
 } // namespace detail
 
 /**
@@ -93,9 +168,14 @@ amotry_impl(auto &&ptr,
  * @endcode
  * Canonical values: fac = −1 (reflect), 2 (expand), 0.5 (contract).
  *
- * @tparam Expr  A type satisfying the diff::CExpression concept.
+ * @tparam Expr        A type satisfying the diff::CExpression concept.
+ * @tparam RandomInit  When @c true, minimize(p, delta) builds the initial
+ *                     simplex from a random orthonormal basis (GSL nmsimplex2rand
+ *                     style) using a cached detail::RngBuffer member.  When
+ *                     @c false (default), the standard axis-aligned simplex is
+ *                     used and no RNG state is stored.
  */
-template <diff::CExpression Expr> struct Amoeba {
+template <diff::CExpression Expr, bool RandomInit = false> struct Amoeba {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
@@ -112,6 +192,11 @@ private:
   value_type fret{};
   int iter{};
   const value_type ftol;
+
+  using RngType = std::conditional_t<RandomInit,
+                                     detail::RngBuffer<value_type>,
+                                     detail::NoRng>;
+  [[no_unique_address]] RngType rng_;
 
 public:
   /**
@@ -144,16 +229,23 @@ public:
   /**
    * @brief Builds an initial simplex around @p p and minimizes.
    *
-   * Constructs the simplex via detail::make_simplex (vertex 0 = @p p; vertex
-   * i+1 = @p p with component i perturbed by @p delta), then delegates to
-   * the Simplex overload.
+   * When @c RandomInit = false (default), builds an axis-aligned simplex via
+   * detail::make_simplex.  When @c RandomInit = true, builds a random
+   * orthonormal-basis simplex via detail::make_simplex_rand drawing from the
+   * cached member RngBuffer (state is preserved across calls).  Then delegates
+   * to the Simplex overload.
    *
    * @param p      Initial centre point.
    * @param delta  Side-length of the initial simplex.
    * @return Approximate minimizer (best vertex on convergence or ITMAX).
    */
-  constexpr Point minimize(const Point &p, const value_type &delta) {
-    return minimize(detail::make_simplex(p, delta));
+  Point minimize(const Point &p, const value_type &delta) {
+    if constexpr (RandomInit)
+      return minimize(
+          detail::make_simplex_rand<value_type, static_cast<int>(N)>(p, delta,
+                                                                      rng_));
+    else
+      return minimize(detail::make_simplex(p, delta));
   }
 
   /**
@@ -179,8 +271,9 @@ public:
  *
  * Returns the best vertex found, with the function value stored in fret.
  */
-template <diff::CExpression Expr>
-constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
+template <diff::CExpression Expr, bool RandomInit>
+constexpr typename Amoeba<Expr, RandomInit>::Point
+Amoeba<Expr, RandomInit>::minimize(Simplex s) {
   // Step 1: evaluate f at every initial vertex.
   FVals y =
       FVals::NullaryExpr([&](Eigen::Index i) { return eval_at(s.col(i)); });
@@ -243,5 +336,21 @@ constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
 
 template <diff::CExpression Expr> Amoeba(Expr) -> Amoeba<Expr>;
 template <diff::CExpression Expr, typename T> Amoeba(Expr, T) -> Amoeba<Expr>;
+
+/// @brief Factory for the standard axis-aligned simplex variant.
+template <diff::CExpression Expr>
+auto make_amoeba(Expr e,
+                 typename Expr::value_type ftol =
+                     static_cast<typename Expr::value_type>(3.0e-8)) {
+  return Amoeba<Expr, false>{std::move(e), ftol};
+}
+
+/// @brief Factory for the random orthonormal-basis simplex variant.
+template <diff::CExpression Expr>
+auto make_amoeba_rand(Expr e,
+                      typename Expr::value_type ftol =
+                          static_cast<typename Expr::value_type>(3.0e-8)) {
+  return Amoeba<Expr, true>{std::move(e), ftol};
+}
 
 } // namespace exprmin
