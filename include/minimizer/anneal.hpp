@@ -110,7 +110,8 @@ public:
   }
 
   /**
-   * @brief Runs SA hot phase then cold Amoeba refinement on a pre-built simplex.
+   * @brief Runs SA hot phase then cold Amoeba refinement on a pre-built
+   * simplex.
    *
    * Stores the best function value in fret; retrieve it with
    * get_optimal_value() after the call.
@@ -167,7 +168,8 @@ private:
    * relative spread drops below @c ftol.
    *
    * @param s       Fresh simplex built at pbest (pre-computed by caller).
-   * @param y       Function values at the simplex vertices (re-evaluated inside).
+   * @param y       Function values at the simplex vertices (re-evaluated
+   * inside).
    * @param pbest   Best point from the hot phase.
    * @param ybest   Best function value from the hot phase.
    * @return        {ybest_final, pbest_final} after cold convergence.
@@ -246,7 +248,7 @@ SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y) {
       y.unaryExpr([&, this](double v) { return v + this->bolt(temperature); });
   Eigen::Index ib_idx;
   y.minCoeff(&ib_idx);
-  std::size_t ib = static_cast<std::size_t>(ib_idx);
+  auto ib = static_cast<std::size_t>(ib_idx);
   value_type ybest = y[ib];
   Point pbest = s.col(ib);
   Point psum = s.rowwise().sum();
@@ -260,24 +262,21 @@ SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y) {
 
     Eigen::Index ilo_idx;
     yy.minCoeff(&ilo_idx);
-    const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
-    std::size_t ihi = (yy[0] > yy[1]) ? 0uz : 1uz;
-    std::size_t inhi = 1uz - ihi;
-    for (auto i : std::views::iota(2uz, N + 1)) {
-      if (yy[i] > yy[ihi]) {
-        inhi = ihi;
-        ihi = i;
-      } else if (yy[i] > yy[inhi] && i != ihi) {
-        inhi = i;
-      }
-    }
+    const auto ilo = static_cast<std::size_t>(ilo_idx);
+    Eigen::Index ihi_idx;
+    yy.maxCoeff(&ihi_idx);
+    const auto ihi = static_cast<std::size_t>(ihi_idx);
+    auto not_ihi_yy = std::views::iota(0uz, N + 1) |
+                      std::views::filter([ihi](auto i) { return i != ihi; });
+    const std::size_t inhi = *std::ranges::max_element(
+        not_ihi_yy, std::less{}, [&yy](std::size_t i) { return yy[i]; });
 
     // Track the best *real* value seen, independent of the noisy ranking
-    for (auto i : std::views::iota(0uz, N + 1)) {
-      if (y[i] < ybest) {
-        ybest = y[i];
-        pbest = s.col(i);
-      }
+    Eigen::Index ibest_idx;
+    const value_type ymin = y.minCoeff(&ibest_idx);
+    if (ymin < ybest) {
+      ybest = ymin;
+      pbest = s.col(ibest_idx);
     }
 
     value_type ytry = amotry(s, y, yy, psum, ihi, value_type{-1});
@@ -288,14 +287,14 @@ SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y) {
       ytry = amotry(s, y, yy, psum, ihi, value_type{0.5});
       if (ytry >= ysave) {
         // Contraction failed — shrink whole simplex toward best noisy vertex
-        for (Eigen::Index k = 0; k <= static_cast<Eigen::Index>(N); ++k) {
-          if (k == static_cast<Eigen::Index>(ilo)) {
-            continue;
-          }
-          s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
-          y[k] = eval_at(s.col(k));
-          yy[k] = y[k] + bolt(temperature);
-        }
+        std::ranges::for_each(
+            std::views::iota(0uz, N + 1) |
+                std::views::filter([ilo](auto i) { return i != ilo; }),
+            [&](std::size_t i) {
+              s.col(i) = value_type{0.5} * (s.col(i) + s.col(ilo));
+              y[i] = eval_at(s.col(i));
+              yy[i] = y[i] + bolt(temperature);
+            });
         psum = s.rowwise().sum();
       }
     }
@@ -326,16 +325,13 @@ SimAnneal<Expr>::ColdPhaseSA(Simplex s, FVals y, Point pbest,
     Eigen::Index ilo_idx;
     y.minCoeff(&ilo_idx);
     const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
-    std::size_t ihi = (y[0] > y[1]) ? 0uz : 1uz;
-    std::size_t inhi = 1uz - ihi;
-    for (auto i : std::views::iota(2uz, N + 1)) {
-      if (y[i] > y[ihi]) {
-        inhi = ihi;
-        ihi = i;
-      } else if (y[i] > y[inhi] && i != ihi) {
-        inhi = i;
-      }
-    }
+    Eigen::Index ihi_idx;
+    y.maxCoeff(&ihi_idx);
+    const std::size_t ihi = static_cast<std::size_t>(ihi_idx);
+    auto not_ihi_y = std::views::iota(0uz, N + 1) |
+                     std::views::filter([ihi](auto i) { return i != ihi; });
+    const std::size_t inhi = *std::ranges::max_element(
+        not_ihi_y, std::less{}, [&y](std::size_t i) { return y[i]; });
 
     if (y[ilo] < ybest) {
       ybest = y[ilo];
@@ -355,13 +351,13 @@ SimAnneal<Expr>::ColdPhaseSA(Simplex s, FVals y, Point pbest,
       ytry = amotry_cold(s, y, psum, ihi, value_type{0.5});
       if (ytry >= ysave) {
         // Contraction failed — shrink whole simplex toward best vertex
-        for (std::size_t k = 0; k <= N; ++k) {
-          if (k == ilo) {
-            continue;
-          }
-          s.col(k) = value_type{0.5} * (s.col(k) + s.col(ilo));
-          y[k] = eval_at(s.col(k));
-        }
+        std::ranges::for_each(
+            std::views::iota(0uz, N + 1) |
+                std::views::filter([ilo](auto i) { return i != ilo; }),
+            [&](std::size_t i) {
+              s.col(i) = value_type{0.5} * (s.col(i) + s.col(ilo));
+              y[i] = eval_at(s.col(i));
+            });
         psum = s.rowwise().sum();
       }
     }
@@ -369,7 +365,7 @@ SimAnneal<Expr>::ColdPhaseSA(Simplex s, FVals y, Point pbest,
 
   Eigen::Index ilo_f_idx;
   y.minCoeff(&ilo_f_idx);
-  const std::size_t ilo_f = static_cast<std::size_t>(ilo_f_idx);
+  const auto ilo_f = static_cast<std::size_t>(ilo_f_idx);
   if (y[ilo_f] < ybest) {
     ybest = y[ilo_f];
     pbest = s.col(ilo_f);
