@@ -436,8 +436,8 @@ template <diff::CExpression Expr>
 constexpr typename Dbrent<Expr>::value_type Dbrent<Expr>::minimize() {
   struct Funcd {
     Dbrent &self;
-    value_type operator()(value_type t) { return self.eval_at(t); }
-    value_type df(value_type t) {
+    constexpr value_type operator()(value_type t) { return self.eval_at(t); }
+    constexpr value_type df(value_type t) {
       std::array<value_type, 1> v{t};
       self.expr.update(Syms{}, v);
       const auto g = diff::gradient<diff::DiffMode::Reverse>(self.expr);

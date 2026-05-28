@@ -580,6 +580,75 @@ TEST(AugLag, BothConstraints) {
   EXPECT_NEAR(al.get_optimal_value(), 0.5, 1e-3);
 }
 
+// ─── NLopt testfuncs: Roth and Rosenbrock as NLS ─────────────────────────────
+// Roth (testfuncs.c): r1=-13+u+((5-v)v-2)v, r2=-29+u+((v+1)v-14)v
+// init {4.5, 3.5}, min at {5, 4}, f=0
+TEST(NLSDogleg, Roth_Standard) {
+  auto u = PV(0.0, 'u');
+  auto v = PV(0.0, 'v');
+  auto r1 = -13.0 + u + ((5.0 - v) * v - 2.0) * v;
+  auto r2 = -29.0 + u + ((v + 1.0) * v - 14.0) * v;
+  auto nd = exprmin::make_nls_dogleg(r1, r2);
+  auto p = nd.minimize({4.5, 3.5});
+  EXPECT_NEAR(p[0], 5.0, 1e-3);
+  EXPECT_NEAR(p[1], 4.0, 1e-3);
+  EXPECT_NEAR(nd.get_optimal_value(), 0.0, 1e-5);
+}
+TEST(NLSDogleg, Roth_Double) {
+  auto u = PV(0.0, 'u');
+  auto v = PV(0.0, 'v');
+  auto r1 = -13.0 + u + ((5.0 - v) * v - 2.0) * v;
+  auto r2 = -29.0 + u + ((v + 1.0) * v - 14.0) * v;
+  auto nd = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2);
+  auto p = nd.minimize({4.5, 3.5});
+  EXPECT_NEAR(p[0], 5.0, 1e-3);
+  EXPECT_NEAR(p[1], 4.0, 1e-3);
+  EXPECT_NEAR(nd.get_optimal_value(), 0.0, 1e-5);
+}
+
+// Rosenbrock as NLS residuals: r1=10*(y-x²), r2=1-x
+// init {-1.2, 1.0}, min at {1, 1}, f=0
+TEST(NLSDogleg, RosenbrockNLS_Standard) {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto r1 = 10.0 * (y - x * x);
+  auto r2 = 1.0 - x;
+  auto nd = exprmin::make_nls_dogleg(r1, r2);
+  auto p = nd.minimize({-1.2, 1.0});
+  EXPECT_NEAR(p[0], 1.0, 1e-4);
+  EXPECT_NEAR(p[1], 1.0, 1e-4);
+  EXPECT_NEAR(nd.get_optimal_value(), 0.0, 1e-6);
+}
+TEST(NLSDogleg, RosenbrockNLS_Double) {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto r1 = 10.0 * (y - x * x);
+  auto r2 = 1.0 - x;
+  auto nd = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2);
+  auto p = nd.minimize({-1.2, 1.0});
+  EXPECT_NEAR(p[0], 1.0, 1e-4);
+  EXPECT_NEAR(p[1], 1.0, 1e-4);
+  EXPECT_NEAR(nd.get_optimal_value(), 0.0, 1e-6);
+}
+
+// NLopt t_tutorial.cxx: min y  s.t.  (2x)³-y ≤ 0,  (1-x)³-y ≤ 0
+// Same optimal point as the tutorial's min sqrt(y) (sqrt is monotone).
+// init {0.5, 1.0}, optimal: x=1/3, y=8/27≈0.2963
+TEST(AugLag, NLoptTutorial) {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto f = y + diff::Constant<double>{0.0} * x;
+  auto two_x = 2.0 * x;
+  auto g1 = two_x * two_x * two_x - y;
+  auto neg_x1 = 1.0 - x;
+  auto g2 = neg_x1 * neg_x1 * neg_x1 - y;
+  exprmin::AugLag al{f, std::tuple{}, exprmin::make_ineq(g1, g2)};
+  auto p = al.minimize({0.5, 1.0});
+  EXPECT_NEAR(p[0], 1.0 / 3.0, 1e-3);
+  EXPECT_NEAR(p[1], 8.0 / 27.0, 1e-3);
+  EXPECT_NEAR(al.get_optimal_value(), 8.0 / 27.0, 1e-3);
+}
+
 // ─── Broyden root finder ─────────────────────────────────────────────────────
 
 // Linear system: x + y - 3 = 0, x - y - 1 = 0  →  x=2, y=1
@@ -965,4 +1034,89 @@ TEST(InteriorPointLP, TwoConstraints) {
   EXPECT_NEAR(ip.fret, -18.0, 1e-3);
   EXPECT_NEAR(x[0], 1.0, 1e-3);
   EXPECT_NEAR(x[1], 3.0, 1e-3);
+}
+
+// ─── Compile-time evaluation (constexpr / consteval) ─────────────────────────
+// Expression construction, eval(), and reverse-mode gradient are fully
+// constexpr throughout the library.  1-D minimizers (Brent, Golden, Dbrent)
+// use only scalar arithmetic and std::array, so they are consteval in C++23
+// (std::abs / std::sqrt became constexpr via P0533R9).
+// N-D minimizers depend on Eigen::Vector which is not a literal type, so they
+// remain runtime-only despite their constexpr-qualified minimize() signatures.
+
+// --- Expression evaluation at known points ---
+
+consteval double ce_bowl2d_at_min() {
+  auto x = PV(1.0, 'x');
+  auto y = PV(2.0, 'y');
+  return ((x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0)).eval();
+}
+consteval double ce_rosenbrock_at_min() {
+  auto x = PV(1.0, 'x');
+  auto y = PV(1.0, 'y');
+  return ((1.0 - x) * (1.0 - x) + 100.0 * (y - x * x) * (y - x * x)).eval();
+}
+static_assert(ce_bowl2d_at_min() == 0.0);
+static_assert(ce_rosenbrock_at_min() == 0.0);
+
+// --- Reverse-mode gradient at the minimum (should be zero) ---
+
+consteval std::array<double, 2> ce_bowl2d_grad_at_min() {
+  auto x = PV(1.0, 'x');
+  auto y = PV(2.0, 'y');
+  auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
+  return diff::gradient<diff::DiffMode::Reverse>(f);
+}
+static_assert(ce_bowl2d_grad_at_min()[0] == 0.0);
+static_assert(ce_bowl2d_grad_at_min()[1] == 0.0);
+
+// --- 1-D minimisation at compile time ---
+
+consteval double ce_brent_quadratic() {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  exprmin::Brent b{(x - 2.0) * (x - 2.0)};
+  return b.minimize(0.0, 5.0);
+}
+consteval double ce_golden_quadratic() {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  exprmin::Golden g{(x - 2.0) * (x - 2.0)};
+  return g.minimize(0.0, 5.0);
+}
+consteval double ce_dbrent_quadratic() {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  exprmin::Dbrent db{(x - 2.0) * (x - 2.0)};
+  return db.minimize(0.0, 5.0);
+}
+consteval bool ce_bracket_quadratic() {
+  auto x = diff::Variable<double, 'x'>{0.0};
+  exprmin::Bracketmethod bm{(x - 3.0) * (x - 3.0)};
+  bm.bracket(0.0, 1.0);
+  return (bm.ax <= 3.0 && 3.0 <= bm.cx) || (bm.cx <= 3.0 && 3.0 <= bm.ax);
+}
+static_assert(ce_brent_quadratic()  > 2.0 - 1e-5 && ce_brent_quadratic()  < 2.0 + 1e-5);
+static_assert(ce_golden_quadratic() > 2.0 - 1e-5 && ce_golden_quadratic() < 2.0 + 1e-5);
+static_assert(ce_dbrent_quadratic() > 2.0 - 1e-5 && ce_dbrent_quadratic() < 2.0 + 1e-5);
+static_assert(ce_bracket_quadratic());
+
+TEST(ConstexprEval, ExpressionAtMinimum) {
+  EXPECT_EQ(ce_bowl2d_at_min(), 0.0);
+  EXPECT_EQ(ce_rosenbrock_at_min(), 0.0);
+}
+TEST(ConstexprEval, GradientAtMinimum) {
+  constexpr auto g = ce_bowl2d_grad_at_min();
+  EXPECT_EQ(g[0], 0.0);
+  EXPECT_EQ(g[1], 0.0);
+}
+TEST(ConstexprBrent, QuadraticMinimum) {
+  EXPECT_NEAR(ce_brent_quadratic(), 2.0, 1e-5);
+}
+TEST(ConstexprGolden, QuadraticMinimum) {
+  EXPECT_NEAR(ce_golden_quadratic(), 2.0, 1e-5);
+}
+TEST(ConstexprDbrent, QuadraticMinimum) {
+  EXPECT_NEAR(ce_dbrent_quadratic(), 2.0, 1e-5);
+}
+TEST(ConstexprBracketmethod, BracketContainsMinimum) {
+  static_assert(ce_bracket_quadratic());
+  EXPECT_TRUE(ce_bracket_quadratic());
 }
