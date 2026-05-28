@@ -34,6 +34,7 @@ using Bowl2DTypes =
     testing::Types<exprmin::Powell<Bowl2DExpr>, exprmin::Frprmn<Bowl2DExpr>,
                    exprmin::BFGS<Bowl2DExpr>, exprmin::DFrprmn<Bowl2DExpr>,
                    exprmin::DBFGS<Bowl2DExpr>, exprmin::LBFGS<Bowl2DExpr>,
+                   exprmin::DFP<Bowl2DExpr>, exprmin::SR1<Bowl2DExpr>,
                    exprmin::Dogleg<Bowl2DExpr>,
                    exprmin::Dogleg<Bowl2DExpr, exprmin::HessianMode::ExactAD>>;
 template <typename T> class Bowl2DTest : public testing::Test {};
@@ -48,10 +49,13 @@ TYPED_TEST(Bowl2DTest, Converges) {
 }
 
 // Rosenbrock: (1-x)²+100(y-x²)²  →  {1,1}, f=0
+// SR1 is excluded from the typed suite: no positive-definiteness guarantee means
+// it can require more iterations on this highly curved valley; see TEST(SR1,…).
 using RosenbrockTypes = testing::Types<
     exprmin::Powell<RosenbrockExpr>, exprmin::Frprmn<RosenbrockExpr>,
     exprmin::BFGS<RosenbrockExpr>, exprmin::DFrprmn<RosenbrockExpr>,
     exprmin::DBFGS<RosenbrockExpr>, exprmin::LBFGS<RosenbrockExpr>,
+    exprmin::DFP<RosenbrockExpr>,
     exprmin::Dogleg<RosenbrockExpr>,
     exprmin::Dogleg<RosenbrockExpr, exprmin::HessianMode::ExactAD>>;
 template <typename T> class RosenbrockTest : public testing::Test {};
@@ -70,6 +74,7 @@ using Quad3DTypes =
     testing::Types<exprmin::Powell<Quad3DExpr>, exprmin::Frprmn<Quad3DExpr>,
                    exprmin::BFGS<Quad3DExpr>, exprmin::DFrprmn<Quad3DExpr>,
                    exprmin::DBFGS<Quad3DExpr>, exprmin::LBFGS<Quad3DExpr>,
+                   exprmin::DFP<Quad3DExpr>, exprmin::SR1<Quad3DExpr>,
                    exprmin::Dogleg<Quad3DExpr>,
                    exprmin::Dogleg<Quad3DExpr, exprmin::HessianMode::ExactAD>>;
 template <typename T> class Quad3DTest : public testing::Test {};
@@ -252,6 +257,27 @@ TEST(DFrprmn, FletcherReeves) {
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 2.0, kTol);
 }
+// SR1 does not guarantee a positive-definite Hessian, so on highly curved
+// objectives like Rosenbrock the loop may reset to steepest descent several
+// times.  The tolerance is relaxed to 1e-3 / 1e-4 accordingly.
+TEST(SR1, Rosenbrock) {
+  auto f = make_rosenbrock();
+  exprmin::SR1<RosenbrockExpr> opt{f, 1e-8};
+  auto p = opt.minimize({-1.0, 1.0});
+  EXPECT_NEAR(p[0], 1.0, 1e-3);
+  EXPECT_NEAR(p[1], 1.0, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-4);
+}
+// SR1 with derivative-based line search.
+TEST(DSR1, Rosenbrock) {
+  auto f = make_rosenbrock();
+  exprmin::DSR1<RosenbrockExpr> opt{f, 1e-8};
+  auto p = opt.minimize({-1.0, 1.0});
+  EXPECT_NEAR(p[0], 1.0, 1e-3);
+  EXPECT_NEAR(p[1], 1.0, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-4);
+}
+
 TEST(LBFGS, Quadratic3DWithArmijo) {
   auto f = make_quad3d();
   auto lbfgs = exprmin::make_lbfgs<exprmin::Armijo>(f);
@@ -590,4 +616,103 @@ TEST(Subspace2D, Overdetermined3r) {
   auto p = s2.minimize({0.0, 0.0});
   EXPECT_NEAR(p[0], 1.0, kTol);
   EXPECT_NEAR(p[1], 1.0, kTol);
+}
+
+// ─── SimplexLP §10.10 ────────────────────────────────────────────────────────
+
+// Simple 2D: min –x₁ – 2x₂  s.t. x₁+x₂ ≤ 4, x ≥ 0
+// Optimal: x=(0,4), obj=–8
+TEST(SimplexLP, Simple2D) {
+  using LP = exprmin::SimplexLP<double>;
+  LP::MatX A(1, 2); A << 1.0, 1.0;
+  LP::VecX b(1);    b << 4.0;
+  LP::VecX c(2);    c << -1.0, -2.0;
+  LP lp;
+  auto x = lp.solve(A, b, c);
+  EXPECT_EQ(lp.status, LP::Status::Optimal);
+  EXPECT_NEAR(lp.fret, -8.0, kTol);
+  EXPECT_NEAR(x[0], 0.0, kTol);
+  EXPECT_NEAR(x[1], 4.0, kTol);
+}
+
+// NR3 worked example (p.533): min –40x₁ – 60x₂
+//   2x₁ + x₂ ≤ 70
+//   x₁  + x₂ ≥ 40  →  –x₁ – x₂ ≤ –40  (negate row)
+//   x₁  + 3x₂ = 90  →  two rows: x₁+3x₂ ≤ 90 and –x₁–3x₂ ≤ –90
+// Optimal: x₁=24, x₂=22, obj=–2280
+TEST(SimplexLP, NRWorkedExample) {
+  using LP = exprmin::SimplexLP<double>;
+  LP::MatX A(4, 2);
+  A << 2.0,  1.0,
+      -1.0, -1.0,
+       1.0,  3.0,
+      -1.0, -3.0;
+  LP::VecX b(4); b <<  70.0, -40.0,  90.0, -90.0;
+  LP::VecX c(2); c << -40.0, -60.0;
+  LP lp;
+  auto x = lp.solve(A, b, c);
+  EXPECT_EQ(lp.status, LP::Status::Optimal);
+  EXPECT_NEAR(lp.fret, -2280.0, 1e-3);
+  EXPECT_NEAR(x[0], 24.0, 1e-3);
+  EXPECT_NEAR(x[1], 22.0, 1e-3);
+}
+
+// Infeasible: x₁+x₂ ≤ 1 and x₁+x₂ ≥ 2 → –x₁–x₂ ≤ –2 (no solution)
+TEST(SimplexLP, Infeasible) {
+  using LP = exprmin::SimplexLP<double>;
+  LP::MatX A(2, 2);
+  A <<  1.0,  1.0,
+       -1.0, -1.0;
+  LP::VecX b(2); b << 1.0, -2.0;
+  LP::VecX c(2); c << 1.0, 1.0;
+  LP lp;
+  lp.solve(A, b, c);
+  EXPECT_EQ(lp.status, LP::Status::Infeasible);
+}
+
+// Unbounded: min –x₁  s.t. x₁ ≥ 0 (no upper bound)
+TEST(SimplexLP, Unbounded) {
+  using LP = exprmin::SimplexLP<double>;
+  LP::MatX A(1, 1); A << 0.0;    // trivial constraint 0·x₁ ≤ 1
+  LP::VecX b(1);    b << 1.0;
+  LP::VecX c(1);    c << -1.0;   // minimise –x₁
+  LP lp;
+  lp.solve(A, b, c);
+  EXPECT_EQ(lp.status, LP::Status::Unbounded);
+}
+
+// ─── InteriorPointLP §10.11 ──────────────────────────────────────────────────
+
+// Same 2D problem in standard form: add slack s so x₁+x₂+s = 4.
+// min [–1,–2,0]·[x₁;x₂;s],  [1,1,1][x₁;x₂;s]=4,  x≥0
+// Optimal: x₁=0, x₂=4, s=0, obj=–8
+TEST(InteriorPointLP, Simple2D) {
+  using IP = exprmin::InteriorPointLP<double>;
+  IP::MatX A(1, 3); A << 1.0, 1.0, 1.0;
+  IP::VecX b(1);    b << 4.0;
+  IP::VecX c(3);    c << -1.0, -2.0, 0.0;
+  IP ip;
+  auto x = ip.solve(A, b, c);
+  EXPECT_EQ(ip.status, IP::Status::Optimal);
+  EXPECT_NEAR(ip.fret, -8.0, 1e-4);
+  EXPECT_NEAR(x[0], 0.0, 1e-4);
+  EXPECT_NEAR(x[1], 4.0, 1e-4);
+}
+
+// Two-constraint unique-vertex problem: min –3x₁–5x₂
+//   x₁+x₂+s₁=4, x₂+s₂=3, x≥0
+// Unique optimal vertex: (x₁=1, x₂=3, s₁=0, s₂=0), obj=–3–15=–18
+TEST(InteriorPointLP, TwoConstraints) {
+  using IP = exprmin::InteriorPointLP<double>;
+  IP::MatX A(2, 4);
+  A << 1.0, 1.0, 1.0, 0.0,
+       0.0, 1.0, 0.0, 1.0;
+  IP::VecX b(2); b << 4.0, 3.0;
+  IP::VecX c(4); c << -3.0, -5.0, 0.0, 0.0;
+  IP ip;
+  auto x = ip.solve(A, b, c);
+  EXPECT_EQ(ip.status, IP::Status::Optimal);
+  EXPECT_NEAR(ip.fret, -18.0, 1e-3);
+  EXPECT_NEAR(x[0], 1.0, 1e-3);
+  EXPECT_NEAR(x[1], 3.0, 1e-3);
 }

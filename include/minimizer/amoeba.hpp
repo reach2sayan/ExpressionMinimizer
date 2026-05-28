@@ -1,6 +1,5 @@
 #pragma once
 
-#include "detail.hpp"
 #include "expressions.hpp"
 #include "traits.hpp"
 #include <Eigen/Dense>
@@ -10,6 +9,70 @@
 namespace exprmin {
 
 namespace mp = boost::mp11;
+
+// ── Free helpers shared by Amoeba and SimAnneal ──────────────────────────────
+namespace detail {
+
+/**
+ * @brief Constructs an (N+1)-vertex simplex around a centre point.
+ *
+ * Column 0 is @p p; column i+1 is @p p with component i displaced by
+ * @p delta.  The result is an N×(N+1) matrix where each column is a vertex.
+ * Shared by Amoeba and SimAnneal.
+ *
+ * @tparam T     Scalar type.
+ * @tparam N     Dimension of the space.
+ * @param p      Centre vertex.
+ * @param delta  Side-length of the initial simplex.
+ * @return N×(N+1) matrix whose columns are the simplex vertices.
+ */
+template <typename T, int N>
+constexpr Eigen::Matrix<T, N, N + 1> make_simplex(const Eigen::Vector<T, N> &p,
+                                                  const T &delta) noexcept {
+  Eigen::Matrix<T, N, N + 1> s = p.replicate(1, N + 1);
+  s.diagonal(1).array() += delta;
+  return s;
+}
+
+/**
+ * @brief Nelder–Mead trial reflection/expansion/contraction step.
+ *
+ * Reflects vertex @p ihi through the centroid of the remaining vertices,
+ * scaled by @p fac.  Updates @p s, @p y, and @p psum in place when the
+ * trial point improves.
+ *
+ * @tparam T    Scalar type.
+ * @tparam N    Simplex dimension.
+ * @param ptr   Object exposing eval_at(Point) → T.
+ * @param s     N×(N+1) simplex matrix (in/out).
+ * @param y     Function values at each vertex (in/out).
+ * @param psum  Column-sum cache (in/out).
+ * @param ihi   Index of the highest (worst) vertex.
+ * @param fac   Reflection factor: −1 = reflect, >1 = expand, 0<fac<1 =
+ * contract.
+ * @return Function value at the trial point.
+ */
+template <typename T, std::size_t N>
+constexpr T
+amotry_impl(auto &&ptr,
+            Eigen::Matrix<T, static_cast<int>(N), static_cast<int>(N + 1)> &s,
+            Eigen::Vector<T, static_cast<int>(N + 1)> &y,
+            Eigen::Vector<T, static_cast<int>(N)> &psum, std::size_t ihi,
+            T fac) {
+  const T fac1 = (T{1} - fac) / static_cast<T>(N);
+  const T fac2 = fac1 - fac;
+  const Eigen::Vector<T, static_cast<int>(N)> ptry =
+      fac1 * psum - fac2 * s.col(ihi);
+  const T ytry = ptr.eval_at(ptry);
+  if (ytry < y[ihi]) {
+    psum += ptry - s.col(ihi);
+    s.col(ihi) = ptry;
+    y[ihi] = ytry;
+  }
+  return ytry;
+}
+
+} // namespace detail
 
 /**
  * @brief NR §10.5 — Nelder–Mead downhill simplex minimizer.
@@ -71,8 +134,8 @@ public:
     return expr.eval();
   }
 
-  /// @brief Callable interface for eval_at — lets Amoeba act as a functor for
-  /// amotry_impl.
+  /// @brief Callable interface; lets Amoeba act as a functor for
+  /// detail::amotry_impl.
   constexpr value_type operator()(const Point &p) { return eval_at(p); }
 
   /// @brief Returns f at the best vertex after the last minimize() call.
@@ -81,9 +144,9 @@ public:
   /**
    * @brief Builds an initial simplex around @p p and minimizes.
    *
-   * Constructs the simplex via detail::make_simplex (vertex 0 = p; vertex i+1
-   * = p with component i perturbed by @p delta), then delegates to the
-   * Simplex overload.
+   * Constructs the simplex via detail::make_simplex (vertex 0 = @p p; vertex
+   * i+1 = @p p with component i perturbed by @p delta), then delegates to
+   * the Simplex overload.
    *
    * @param p      Initial centre point.
    * @param delta  Side-length of the initial simplex.
@@ -118,12 +181,14 @@ public:
  */
 template <diff::CExpression Expr>
 constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
+  // Step 1: evaluate f at every initial vertex.
   FVals y =
       FVals::NullaryExpr([&](Eigen::Index i) { return eval_at(s.col(i)); });
 
+  // Step 2: cache the column-sum; centroid of N+1 vertices = psum / (N+1).
   Point psum = s.rowwise().sum();
   for (iter = 0; iter < ITMAX; ++iter) {
-    // Indices of best (ilo), worst (ihi), second-worst (inhi)
+    // Step 3: locate best (ilo), worst (ihi), and second-worst (inhi) vertices.
     Eigen::Index ilo_idx;
     y.minCoeff(&ilo_idx);
     const auto ilo = static_cast<std::size_t>(ilo_idx);
@@ -131,26 +196,32 @@ constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
     Eigen::Index ihi_idx;
     y.maxCoeff(&ihi_idx);
     const auto ihi = static_cast<std::size_t>(ihi_idx);
-    auto not_ihi = std::views::iota(0uz, N + 1) | std::views::filter([ihi](auto i) { return i != ihi; });
-    const std::size_t inhi = *std::ranges::max_element(not_ihi, std::less{}, [&y](std::size_t i) { return y[i]; });
+    auto not_ihi = std::views::iota(0uz, N + 1) |
+                   std::views::filter([ihi](auto i) { return i != ihi; });
+    const std::size_t inhi = *std::ranges::max_element(
+        not_ihi, std::less{}, [&y](std::size_t i) { return y[i]; });
 
-    // Convergence: relative spread between best and worst
+    // Step 4: converge when the relative spread between best and worst is small.
     if (value_type{2} * std::abs(y[ihi] - y[ilo]) /
             (std::abs(y[ihi]) + std::abs(y[ilo]) + TINY) <
         ftol) {
       fret = y[ilo];
       return s.col(ilo);
     }
+
+    // Step 5: reflect ihi through the centroid of the remaining N vertices.
     value_type ytry = detail::amotry_impl<value_type, N>(*this, s, y, psum, ihi,
                                                          value_type{-1});
     if (ytry <= y[ilo]) {
+      // Step 6a: reflection beat the best — try expanding further.
       detail::amotry_impl<value_type, N>(*this, s, y, psum, ihi, value_type{2});
     } else if (ytry >= y[inhi]) {
+      // Step 6b: reflection is still worse than second-worst — try contracting.
       const value_type ysave = y[ihi];
       ytry = detail::amotry_impl<value_type, N>(*this, s, y, psum, ihi,
                                                 value_type{0.5});
       if (ytry >= ysave) {
-        // Contraction failed — shrink whole simplex toward best
+        // Step 6c: contraction failed — shrink every vertex halfway toward ilo.
         std::ranges::for_each(
             std::views::iota(0uz, N + 1) |
                 std::views::filter([ilo](auto i) { return i != ilo; }),
@@ -162,6 +233,7 @@ constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
       }
     }
   }
+  // Step 7: ITMAX reached without convergence — return the best vertex found.
   Eigen::Index ilo_idx;
   y.minCoeff(&ilo_idx);
   fret = y[ilo_idx];

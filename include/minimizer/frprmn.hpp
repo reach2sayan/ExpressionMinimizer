@@ -22,7 +22,8 @@ namespace exprmin {
 enum class CGMethod { FletcherReeves, PolakRibiere };
 
 /**
- * @brief NR §10.7 — Conjugate gradient minimizer (Fletcher–Reeves / Polak–Ribière).
+ * @brief NR §10.7 — Conjugate gradient minimizer (Fletcher–Reeves /
+ * Polak–Ribière).
  *
  * Gradient ∇f is obtained for free via reverse-mode AD on the expression tree.
  * Line minimization is delegated to the @p LM template parameter:
@@ -107,8 +108,9 @@ public:
  *  3. Recomputes g_new = ∇f(p_new).
  *  4. Computes the CG scaling factor γ = dgg / gg where:
  *       - gg  = ‖g‖²  (squared norm of the old gradient)
- *       - dgg = (g_new − g)·g_new  [Polak–Ribière]  or  ‖g_new‖²  [Fletcher–Reeves]
- *     If gg = 0 the gradient has vanished and we return immediately.
+ *       - dgg = (g_new − g)·g_new  [Polak–Ribière]  or  ‖g_new‖²
+ * [Fletcher–Reeves] If gg = 0 the gradient has vanished and we return
+ * immediately.
  *  5. Updates the conjugate direction: h = −g_new + γ·h,  xi = h.
  *     γ = 0 restarts to steepest descent; γ > 0 carries conjugacy forward.
  */

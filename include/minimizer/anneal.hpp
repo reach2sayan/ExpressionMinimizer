@@ -1,7 +1,6 @@
 #pragma once
 
-#include "detail.hpp"
-#include "expressions.hpp"
+#include "amoeba.hpp"
 #include "traits.hpp"
 #include <Eigen/Dense>
 #include <boost/mp11/list.hpp>
@@ -97,9 +96,9 @@ public:
   /**
    * @brief Builds an initial simplex around @p p and minimizes.
    *
-   * Constructs the simplex via detail::make_simplex (vertex 0 = p; vertex i+1
-   * = p with component i perturbed by @p delta), then delegates to the
-   * Simplex overload.
+   * Constructs the simplex via exprmin::detail::make_simplex (vertex 0 = p;
+   * vertex i+1 = p with component i perturbed by @p delta), then delegates
+   * to the Simplex overload.
    *
    * @param p      Initial centre point.
    * @param delta  Side-length of the initial simplex.
@@ -213,14 +212,14 @@ private:
   /**
    * @brief Noiseless amotry step for the cold Amoeba phase.
    *
-   * Thin wrapper around detail::amotry_impl, which uses real function values
-   * only (no Boltzmann noise).
+   * Thin wrapper around detail::amotry_impl using real function values only
+   * (no Boltzmann noise).
    *
    * @param s    Simplex (in/out).
    * @param y    Real function values (in/out).
    * @param psum Column-sum cache (in/out).
    * @param ihi  Index of the worst vertex.
-   * @param fac  Reflection factor.
+   * @param fac  Reflection factor: −1 reflect, 2 expand, 0.5 contract.
    * @return Real trial value f(ptry).
    */
   constexpr value_type amotry_cold(Simplex &s, FVals &y, Point &psum,
