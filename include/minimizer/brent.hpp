@@ -301,22 +301,32 @@ protected:
   const value_type tol;
 
 public:
+  /// @brief Returns f at the minimizing abscissa after the last minimize() call.
   constexpr value_type get_optimal_value() const { return fmin; }
+  /// @brief Returns the minimizing abscissa (read-only).
   constexpr value_type const &get_optimal_x() const { return xmin; }
+  /// @brief Returns the minimizing abscissa (mutable).
   constexpr value_type &get_optimal_x() { return xmin; }
 
+  /**
+   * @brief Constructs a Brent minimizer wrapping the given expression.
+   * @param e     Expression to minimize.
+   * @param tol_  Fractional abscissa tolerance (default 3×10⁻⁸).
+   */
   constexpr explicit Brent(Expr e,
                            value_type tol_ = static_cast<value_type>(3.0e-8))
       : Base(std::move(e)), tol(tol_) {}
 
-  // N-D point evaluation — used when Brent<Expr> is owned by BFGS / LBFGS /
-  // LinMin.
+  /// @brief N-D point evaluation — used when Brent is owned by BFGS/LBFGS/LinMin.
   constexpr value_type eval_at(const Point &p) {
     expr.update(Syms{}, p);
     return expr.eval();
   }
 
-  // 1D-only overloads: only valid for single-variable expressions.
+  /**
+   * @brief 1-D minimization using the pre-computed bracket stored in @c ax, @c bx, @c cx.
+   * @return Abscissa of the minimum.
+   */
   constexpr value_type minimize()
     requires(N == 1)
   {
@@ -326,6 +336,10 @@ public:
     return xmin;
   }
 
+  /**
+   * @brief Brackets [ax0, bx0] then minimizes.
+   * @return Abscissa of the minimum.
+   */
   constexpr value_type minimize(const value_type &ax0, const value_type &bx0)
     requires(N == 1)
   {
@@ -333,7 +347,16 @@ public:
     return minimize();
   }
 
-  // Minimize any 1D callable — used by LinMin / BFGS / LBFGS.
+  /**
+   * @brief Minimizes any 1-D callable — used by LinMin, BFGS, LBFGS.
+   *
+   * Brackets @p f1d on [ax0, bx0], then refines with Brent.
+   *
+   * @param f1d  1-D callable T(T).
+   * @param ax0  Left end of the initial interval.
+   * @param bx0  Right end of the initial interval.
+   * @return     Abscissa of the minimum.
+   */
   template <std::invocable<value_type> F>
   constexpr value_type minimize_fn(F f1d, value_type ax0, value_type bx0) {
     value_type a = ax0, b = bx0, c;
@@ -373,12 +396,31 @@ template <diff::CExpression Expr> struct Dbrent : Brent<Expr> {
   using Base::fmin;
   using Base::tol;
   using Base::xmin;
+  /**
+   * @brief 1-D minimization using the pre-computed bracket and derivative
+   *        information from the expression.
+   * @return Abscissa of the minimum.
+   */
   constexpr value_type minimize();
 
+  /**
+   * @brief Brackets [ax0, bx0] then minimizes using Dbrent.
+   * @return Abscissa of the minimum.
+   */
   constexpr value_type minimize(const value_type &ax0, const value_type &bx0);
 
-  // Minimize any 1D callable with derivative.  FC must expose operator()(T)
-  // and df(T).  Used by DLinMin / BFGS<Dbrent> / LBFGS<Dbrent>.
+  /**
+   * @brief Minimizes any 1-D callable with derivative — used by DLinMin,
+   *        BFGS<Dbrent>, LBFGS<Dbrent>.
+   *
+   * @p FC must expose @c operator()(T) (value) and @c df(T) (derivative).
+   * Brackets on [ax0, bx0], then refines with Dbrent.
+   *
+   * @param fc   Functor with value and derivative.
+   * @param ax0  Left end of initial interval.
+   * @param bx0  Right end of initial interval.
+   * @return     Abscissa of the minimum.
+   */
   template <typename FC>
   constexpr value_type minimize_fn(FC fc, value_type ax0, value_type bx0);
 

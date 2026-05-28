@@ -43,53 +43,54 @@ inline constexpr std::size_t constraint_count_v = constraint_count<T>::value;
 } // namespace detail
 
 /**
- * @brief Augmented Lagrangian constrained minimizer (NLopt / Birgin–Martínez).
+ * @brief Augmented Lagrangian constrained minimizer (Birgin & Martínez 2014;
+ *        NLopt `auglag.c`).
  *
- * Minimizes @f$f(\mathbf{x})@f$ subject to:
+ * Minimises @f$ f(\mathbf{x}) @f$ subject to
  * @f[
- *   h_i(\mathbf{x}) = 0 \quad (i = 1,\ldots,n_\text{eq}),
+ *   h_i(\mathbf{x}) = 0 \quad (i=1,\ldots,n_{\rm eq}),
  *   \qquad
- *   g_j(\mathbf{x}) \le 0 \quad (j = 1,\ldots,n_\text{ineq})
+ *   g_j(\mathbf{x}) \le 0 \quad (j=1,\ldots,n_{\rm ineq}).
  * @f]
- *
  * All constraint expressions must share the same symbol set as @p Obj.
  *
- * **Augmented Lagrangian** (the inner sub-problem objective):
+ * ### Augmented Lagrangian function
+ *
+ * The inner sub-problem objective is the shifted-penalty augmented Lagrangian
+ * (Birgin & Martínez eq. 3.1 / NLopt convention):
  * @f[
  *   \mathcal{L}(\mathbf{x}) = f(\mathbf{x})
- *     + \sum_i \frac{\rho}{2}\!\left(h_i + \frac{\lambda_i}{\rho}\right)^{\!2}
- *     + \sum_j \frac{\rho}{2}\!\left[\max\!\left(0,\, g_j +
- *       \frac{\mu_j}{\rho}\right)\right]^{\!2}
+ *     + \frac{\rho}{2}\sum_i \!\Bigl(h_i + \tfrac{\lambda_i}{\rho}\Bigr)^2
+ *     + \frac{\rho}{2}\sum_j \!\Bigl[\max\!\Bigl(0,\,
+ *           g_j + \tfrac{\mu_j}{\rho}\Bigr)\Bigr]^2.
  * @f]
+ * The shifted form absorbs the dual variables so the gradient
+ * @f$ \nabla_{\!\mathbf{x}}\mathcal{L} = 0 @f$ at the KKT point coincides
+ * with the original first-order conditions.
  *
- * **Outer loop** (Birgin–Martínez §3.2, also mirrored in NLopt `auglag.c`):
+ * ### Outer loop  (B&M Algorithm 3.1)
  *
- * 1. **Initialise ρ** from constraint violation at @p x₀:
- *    @f$\rho_0 = \operatorname{clamp}(2|f_0|/\sum c_i^2,\;10^{-6},\;10)@f$.
- * 2. **Inner solve** — minimise @f$\mathcal{L}(\mathbf{x})@f$ w.r.t.
- *    @f$\mathbf{x}@f$ using BFGS with Armijo backtracking.
- * 3. **Multiplier updates**:
- *    - Equality:   @f$\lambda_i \leftarrow
- *      \operatorname{clamp}(\lambda_i + \rho h_i, \lambda_\min,
- *      \lambda_\max)@f$.
- *    - Inequality: @f$\mu_j \leftarrow
- *      \operatorname{clamp}(\mu_j + \rho g_j, 0, \mu_\max)@f$.
- * 4. **ICM** (infeasibility/constraint-violation measure):
- *    @f$\text{ICM} = \max_i|h_i|,\; \max_j|\max(g_j, -\mu_j/\rho)|@f$.
- * 5. **Penalty scaling**: if @f$\text{ICM} > \tau\cdot\text{ICM}_\text{prev}@f$
- *    then @f$\rho \leftarrow \gamma\rho@f$.
- * 6. **Convergence**: exit when @f$\text{ICM} \le \text{ftol}@f$.
+ * 1. **Auto-scale** @f$ \rho_0 @f$ from the initial constraint violation.
+ * 2. **Inner minimise** @f$ \mathcal{L} @f$ w.r.t. @f$ \mathbf{x} @f$
+ *    (BFGS + Armijo, multipliers/ρ frozen).
+ * 3. **Dual update**: @f$ \lambda_i \leftarrow \mathrm{clamp}(\lambda_i +
+ *    \rho h_i) @f$; @f$ \mu_j \leftarrow \max(0,\mu_j+\rho g_j) @f$.
+ * 4. **ICM** (infeasibility/complementarity measure): scalar summary of
+ *    constraint violation used to drive convergence and penalty scaling.
+ * 5. **Penalty growth**: if @f$ \mathrm{ICM} > \tau \cdot \mathrm{ICM}_{\rm
+ *    prev} @f$ then @f$ \rho \leftarrow \gamma\rho @f$.
+ * 6. **Convergence**: exit when @f$ \mathrm{ICM} \le \varepsilon @f$.
  *
- * **Template parameters for constraints**
+ * ### Template parameters for constraints
  * - Pass @c std::tuple<> for no constraints of a given type.
- * - Pass @c diff::Equation<CExpression...> (or use make_eq() / make_ineq())
+ * - Pass @c diff::Equation<CExpression...> (or make_eq() / make_ineq())
  *   for one or more constraints.
  *
  * @tparam Obj             A type satisfying diff::CExpression (objective).
  * @tparam EqConstraints   @c std::tuple<> or @c diff::Equation<...> for
- * @f$h_i=0@f$.
+ *                         @f$ h_i = 0 @f$.
  * @tparam IneqConstraints @c std::tuple<> or @c diff::Equation<...> for
- * @f$g_j\le0@f$.
+ *                         @f$ g_j \le 0 @f$.
  */
 template <diff::CExpression Obj, typename EqConstraints = std::tuple<>,
           typename IneqConstraints = std::tuple<>>
@@ -102,9 +103,9 @@ struct AugLag {
       detail::constraint_count_v<IneqConstraints>;
   using Point = Eigen::Vector<value_type, static_cast<int>(N)>;
 
-  // ── Birgin–Martínez algorithm constants ──────────────────────────────────
+  // ── Birgin–Martínez algorithm constants (B&M §3) ─────────────────────────
 
-  /// @brief Penalty-scaling threshold τ: scale ρ if ICM > τ·ICM_prev (B&M
+  /// @brief Penalty-scaling threshold τ: grow ρ when ICM > τ·ICM_prev (B&M
   /// §3.2).
   static constexpr value_type TAU{0.5};
   /// @brief Penalty growth factor γ: ρ ← γρ when constraint progress stalls.
@@ -113,7 +114,8 @@ struct AugLag {
   static constexpr value_type LAM_MIN{-1e20};
   /// @brief Upper clamp bound for equality multipliers λᵢ.
   static constexpr value_type LAM_MAX{1e20};
-  /// @brief Upper clamp bound for inequality multipliers μⱼ (must stay ≥ 0).
+  /// @brief Upper clamp bound for inequality multipliers μⱼ (dual feasibility:
+  /// μⱼ ≥ 0).
   static constexpr value_type MU_MAX{1e20};
   /// @brief Maximum BFGS iterations per inner sub-problem solve.
   static constexpr int INNER_ITMAX = 200;
@@ -125,30 +127,26 @@ private:
   EqConstraints eq;     ///< Equality constraint expressions.
   IneqConstraints ineq; ///< Inequality constraint expressions.
 
-  /// @brief Lagrange multiplier vector for equality constraints (size NEQ).
+  /// @brief Lagrange multipliers for equality constraints λ ∈ ℝ^NEQ (B&M §3.1).
   Eigen::Vector<value_type, static_cast<int>(NEQ)> lambda;
-  /// @brief Lagrange multiplier vector for inequality constraints (size NINEQ).
+  /// @brief Lagrange multipliers for inequality constraints μ ∈ ℝ^NINEQ, μ ≥ 0.
   Eigen::Vector<value_type, static_cast<int>(NINEQ)> mu;
 
-  value_type rho;        ///< Current penalty parameter ρ.
-  value_type fret{};     ///< Objective value at last minimizer found.
-  int iter{};            ///< Outer-loop iteration count.
+  value_type rho;    ///< Current penalty parameter ρ > 0.
+  value_type fret{}; ///< Objective value f(x*) at the last minimizer.
+  int iter{};        ///< Outer-loop iteration count on last minimize() call.
   const value_type ftol; ///< Convergence tolerance on ICM.
 
 public:
   /**
    * @brief Forwarding constructor — accepts constraint arguments by universal
-   * reference.
-   *
-   * Delegates to the concrete constructor after constructing @p EqConstraints
-   * and @p IneqConstraints from the forwarded arguments.
+   *        reference and delegates to the typed constructor.
    *
    * @param o      Objective expression.
    * @param eq_    Equality constraints (default: no constraints).
    * @param ineq_  Inequality constraints (default: no constraints).
-   * @param ftol_  Convergence tolerance on ICM (default 10⁻⁸).
-   * @param rho0   Initial penalty parameter ρ (default 1; auto-scaled in
-   * minimize()).
+   * @param ftol_  ICM convergence tolerance (default 10⁻⁸).
+   * @param rho0   Initial penalty ρ (default 1; auto-scaled in minimize()).
    */
   constexpr explicit AugLag(Obj o, auto &&eq_ = {}, auto &&ineq_ = {},
                             value_type ftol_ = value_type{1e-8},
@@ -158,14 +156,13 @@ public:
                std::move(ftol_), std::move(rho0)) {}
 
   /**
-   * @brief Concrete constructor from fully-typed constraint objects.
-   *
-   * Initialises multiplier vectors to zero (B&M §3.1: cold start).
+   * @brief Typed constructor.  Initialises multiplier vectors to zero
+   *        (B&M §3.1 cold start: λ = 0, μ = 0).
    *
    * @param o      Objective expression.
    * @param eq_    Equality constraint pack (type @p EqConstraints).
    * @param ineq_  Inequality constraint pack (type @p IneqConstraints).
-   * @param ftol_  Convergence tolerance on ICM.
+   * @param ftol_  ICM convergence tolerance.
    * @param rho0   Initial penalty parameter ρ.
    */
   constexpr explicit AugLag(Obj o, EqConstraints eq_ = {},
@@ -180,47 +177,48 @@ public:
       mu.setZero();
   }
 
-  /// @brief Returns @f$f(\mathbf{x}^*)@f$ at the last minimizer found.
+  /// @brief Returns @f$ f(\mathbf{x}^*) @f$ at the last minimizer found.
   constexpr value_type get_optimal_value() const { return fret; }
 
   /**
    * @brief Run the Birgin–Martínez outer loop from starting point @p x.
    *
-   * @param x  Initial primal point (modified in place during the loop).
-   * @return   Approximate constrained minimizer.
-   * @post     #fret holds @f$f(\mathbf{x}^*)@f$; #iter holds the outer-loop
-   * count.
+   * @param x  Initial primal point.
+   * @return   Approximate constrained minimizer @f$ \mathbf{x}^* @f$.
+   * @post     #fret holds @f$ f(\mathbf{x}^*) @f$; #iter holds the outer count.
    */
   constexpr Point minimize(Point x);
 
 private:
-  /// @brief Evaluate @f$f(\mathbf{x})@f$ at @p x (no gradient).
+  /// @brief Evaluate @f$ f(\mathbf{x}) @f$ at @p x (value only, no gradient).
   constexpr value_type eval_obj(const Point &x) {
     obj.update(Syms{}, x);
     return obj.eval();
   }
 
   /**
-   * @brief Assemble the augmented Lagrangian value and gradient at @p x.
+   * @brief Assemble the augmented Lagrangian @f$ \mathcal{L} @f$ and its
+   *        gradient @f$ \nabla_{\!\mathbf{x}}\mathcal{L} @f$ at @p x.
    *
-   * Computes @f$\mathcal{L}(\mathbf{x})@f$ and @f$\nabla\mathcal{L}@f$ via
-   * reverse-mode AD on each expression.  Both equality and inequality
-   * penalty terms are accumulated; the inequality penalty is zero when
-   * @f$g_j + \mu_j/\rho \le 0@f$ (constraint is satisfied with margin).
+   * All reverse-mode AD sweeps are performed in a single forward pass over the
+   * expression graph.  Equality and inequality penalty terms are accumulated
+   * independently; the inequality penalty is zero when the shifted constraint
+   * value @f$ g_j + \mu_j/\rho \le 0 @f$ (constraint satisfied with margin).
    *
    * @param x  Current primal point.
-   * @return   @c {L, ∇L} pair consumed by the BFGS inner solver.
+   * @return   @c {L, ∇L} pair consumed by bfgs_armijo.
    */
   constexpr std::pair<value_type, Point> eval_aug(const Point &x);
 
   /**
-   * @brief Solve the inner sub-problem: minimise @f$\mathcal{L}@f$ from @p x.
+   * @brief Solve the inner sub-problem: minimise @f$ \mathcal{L}(\cdot) @f$
+   *        from warm-start @p x with multipliers and ρ frozen.
    *
-   * Uses BFGS with Armijo backtracking (exprmin::bfgs_armijo) and the
-   * current multipliers and penalty ρ frozen during the solve.
+   * Uses BFGS with Armijo backtracking (bfgs_armijo), which requires only
+   * value + gradient evaluations and imposes no curvature on the objective.
    *
-   * @param x  Warm-start point.
-   * @return   Approximate unconstrained minimizer of @f$\mathcal{L}@f$.
+   * @param x  Warm-start point (previous outer iterate).
+   * @return   Approximate unconstrained minimizer of @f$ \mathcal{L} @f$.
    */
   constexpr Point inner_minimize(Point x) {
     return exprmin::bfgs_armijo<value_type, static_cast<int>(N)>(
@@ -237,40 +235,50 @@ constexpr std::pair<
     typename AugLag<Obj, EqConstraints, IneqConstraints>::value_type,
     typename AugLag<Obj, EqConstraints, IneqConstraints>::Point>
 AugLag<Obj, EqConstraints, IneqConstraints>::eval_aug(const Point &x) {
-  // ── Step 1: objective contribution f(x) and ∇f(x). ──────────────────────
+
+  // ── Step 1: objective term — f(x) and ∇f(x) ──────────────────────────────
+  // Seed the expression at x and run reverse-mode AD to get both value and
+  // gradient in one pass over the expression graph.
   obj.update(Syms{}, x);
   value_type L = obj.eval();
   const auto g0 = diff::gradient<diff::DiffMode::Reverse>(obj);
   Point g = Eigen::Map<const Point>(g0.data());
 
-  // ── Step 2: equality penalty terms (ρ/2)(hᵢ + λᵢ/ρ)². ──────────────────
-  // Shifted by λᵢ/ρ so the gradient at the Lagrangian saddle point vanishes.
+  // ── Step 2: equality penalty — (ρ/2)(hᵢ + λᵢ/ρ)² per constraint ─────────
+  // The shift λᵢ/ρ is the Rockafellar trick: at the exact Lagrangian saddle
+  // point hᵢ = 0 ⟹ the shifted value h̃ = hᵢ + λᵢ/ρ = λᵢ/ρ ≠ 0 in general,
+  // but ρ·h̃ = λᵢ + ρhᵢ matches the dual update, so ∇L = ∇f + Σλᵢ∇hᵢ + O(ρ)
+  // recovers the KKT stationarity condition as ρ → ∞ (B&M §2.2).
+  // Gradient contribution: ρ·h̃·∇hᵢ  (chain rule through the square).
   if constexpr (NEQ > 0) {
     int ii = 0;
     eq.for_each_expr([&](auto &c) {
       c.update(Syms{}, x);
-      const value_type h = c.eval() + lambda[ii] / rho; // shifted violation
+      const value_type h = c.eval() + lambda[ii] / rho; // shifted violation h̃
       const auto hg0 = diff::gradient<diff::DiffMode::Reverse>(c);
       const Point hg = Eigen::Map<const Point>(hg0.data());
-      L += value_type{0.5} * rho * h * h; // penalty: (ρ/2)·h̃²
-      g += rho * h * hg;                  // gradient: ρ·h̃·∇hᵢ
+      L += value_type{0.5} * rho * h * h; // (ρ/2)·h̃²
+      g += rho * h * hg;                  // ρ·h̃·∇hᵢ
       ++ii;
     });
   }
 
-  // ── Step 3: inequality penalty terms (ρ/2) max(0, gⱼ + μⱼ/ρ)². ─────────
-  // The max(0,·) clamp activates the penalty only when the constraint is
-  // violated after accounting for the current dual shift μⱼ/ρ.
+  // ── Step 3: inequality penalty — (ρ/2) max(0, gⱼ + μⱼ/ρ)² per constraint ─
+  // The outer max(0,·) is the indicator for active constraints: the penalty is
+  // zero when the shifted value f̃ = gⱼ + μⱼ/ρ ≤ 0, i.e. when gⱼ ≤ −μⱼ/ρ
+  // (the constraint is satisfied with a slack at least μⱼ/ρ).  This matches
+  // the complementary slackness condition μⱼ·gⱼ = 0 at the KKT point.
+  // Gradient is zero in the inactive case (subdifferential of max(0,·) at 0).
   if constexpr (NINEQ > 0) {
     int ii = 0;
     ineq.for_each_expr([&](auto &c) {
       c.update(Syms{}, x);
-      const value_type f = c.eval() + mu[ii] / rho; // shifted violation
+      const value_type f = c.eval() + mu[ii] / rho; // shifted violation f̃
       if (f > value_type{}) {                       // constraint active
         const auto fg0 = diff::gradient<diff::DiffMode::Reverse>(c);
         const Point fg = Eigen::Map<const Point>(fg0.data());
-        L += value_type{0.5} * rho * f * f; // penalty: (ρ/2)·f̃²
-        g += rho * f * fg;                  // gradient: ρ·f̃·∇gⱼ
+        L += value_type{0.5} * rho * f * f; // (ρ/2)·f̃²
+        g += rho * f * fg;                  // ρ·f̃·∇gⱼ
       }
       ++ii;
     });
@@ -279,7 +287,7 @@ AugLag<Obj, EqConstraints, IneqConstraints>::eval_aug(const Point &x) {
   return {L, g};
 }
 
-// ── minimize (outer Birgin–Martínez loop) ────────────────────────────────────
+// ── minimize (outer Birgin–Martínez loop, B&M Algorithm 3.1) ─────────────────
 
 template <diff::CExpression Obj, typename EqConstraints,
           typename IneqConstraints>
@@ -287,10 +295,15 @@ constexpr typename AugLag<Obj, EqConstraints, IneqConstraints>::Point
 AugLag<Obj, EqConstraints, IneqConstraints>::minimize(Point x) {
   using std::abs, std::max;
 
-  // ── Step 1: Auto-scale ρ₀ from constraint violation at x₀ (B&M §3.2). ──
-  // Formula: ρ₀ = clamp(2|f₀| / Σcᵢ², 1e-6, 10).
-  // Rationale: balance the objective scale against the initial violation so
-  // neither the penalty nor the Lagrangian gradient is dominated by one term.
+  // ── Step 1: auto-scale ρ₀ from the constraint violation at x₀ ─────────────
+  // Formula (NLopt auglag.c §init_penalty):
+  //   ρ₀ = clamp(2|f(x₀)| / Σcᵢ(x₀)², 10⁻⁶, 10)
+  // Rationale: the penalty term ρΣcᵢ² should be of the same order as |f| so
+  // neither the objective nor the constraint violation dominates ∇L.  Without
+  // scaling, a large |f| relative to ‖c‖ leads to poorly penalised constraint
+  // violations, while a tiny |f| leads to an overly stiff sub-problem.
+  // Only active inequality violations are included in Σcᵢ² (same convention as
+  // the penalty in eval_aug step 3).
   if constexpr (NEQ > 0 || NINEQ > 0) {
     obj.update(Syms{}, x);
     const value_type fcur = obj.eval();
@@ -308,7 +321,7 @@ AugLag<Obj, EqConstraints, IneqConstraints>::minimize(Point x) {
         c.update(Syms{}, x);
         const value_type f = c.eval();
         if (f > value_type{})
-          con2 += f * f; // count only active violations
+          con2 += f * f; // only active violations
       });
     }
 
@@ -323,14 +336,19 @@ AugLag<Obj, EqConstraints, IneqConstraints>::minimize(Point x) {
   for (iter = 0; iter < OUTER_ITMAX; ++iter) {
     const value_type prev_ICM = ICM;
 
-    // ── Step 2: Inner sub-problem — minimise L(x, λ, μ, ρ) w.r.t. x. ───
-    // Multipliers and ρ are held fixed; BFGS-Armijo drives ∇ₓL → 0.
+    // ── Step 2: inner sub-problem — minimise L(x; λ, μ, ρ) w.r.t. x ─────────
+    // Multipliers λ, μ and penalty ρ are treated as constants during this
+    // solve. BFGS-Armijo drives ∇ₓL → 0; warm-started from the previous iterate
+    // so each inner solve needs far fewer steps than a cold start (B&M
+    // Remark 3.1).
     x = inner_minimize(x);
     ICM = value_type{};
 
-    // ── Step 3a: Update equality multipliers λᵢ ← λᵢ + ρ·hᵢ(x). ────────
-    // Dual ascent step; clamped to [LAM_MIN, LAM_MAX] for safety.
-    // ICM tracks max |hᵢ| as the feasibility metric for equality constraints.
+    // ── Step 3a: equality multiplier update — λᵢ ← clamp(λᵢ + ρhᵢ(x)) ───────
+    // This is the standard dual ascent step for equality constraints
+    // (B&M eq. 3.3a / Rockafellar 1974).  Adding ρhᵢ pushes λ toward the KKT
+    // multiplier; clamping to [LAM_MIN, LAM_MAX] prevents overflow.
+    // ICM accumulates max|hᵢ| as the equality feasibility metric.
     if constexpr (NEQ > 0) {
       int ii = 0;
       eq.for_each_expr([&](auto &c) {
@@ -342,9 +360,14 @@ AugLag<Obj, EqConstraints, IneqConstraints>::minimize(Point x) {
       });
     }
 
-    // ── Step 3b: Update inequality multipliers μⱼ ← max(0, μⱼ + ρ·gⱼ). ─
-    // The max(0,·) enforces μⱼ ≥ 0 (dual feasibility for ≤ constraints).
-    // ICM tracks the complementarity residual max(gⱼ, −μⱼ/ρ) per NLopt.
+    // ── Step 3b: inequality multiplier update — μⱼ ← max(0, μⱼ + ρgⱼ(x)) ───
+    // The max(0,·) enforces dual feasibility μⱼ ≥ 0 required for ≤ constraints.
+    // ICM uses the NLopt complementarity metric: max(gⱼ, −μⱼ/ρ).
+    //   • gⱼ > 0: constraint violated — direct infeasibility measure.
+    //   • gⱼ ≤ 0 but −μⱼ/ρ > 0: complementary slackness violated (μⱼ < 0
+    //     would be dual infeasible, but we clamp so this branch means μⱼ = 0
+    //     after the previous update and gⱼ < 0 — complementarity holds, metric
+    //     = 0).
     if constexpr (NINEQ > 0) {
       int ii = 0;
       ineq.for_each_expr([&](auto &c) {
@@ -356,15 +379,21 @@ AugLag<Obj, EqConstraints, IneqConstraints>::minimize(Point x) {
       });
     }
 
-    // ── Step 4: Penalty scaling — grow ρ if feasibility progress is slow. ─
-    // If ICM hasn't shrunk by at least a factor τ, multiply ρ by γ.
-    // This forces the sub-problem to penalise constraint violations more
-    // heavily in the next iteration, driving the iterates toward feasibility.
+    // ── Step 4: penalty scaling — grow ρ if feasibility progress is slow
+    // ────── If the ICM reduction relative to the previous iteration is less
+    // than τ, the current ρ is not large enough to force the iterates toward
+    // feasibility. Multiplying by γ stiffens the penalty, trading a harder
+    // inner sub-problem for faster constraint satisfaction (B&M §3.2,
+    // Proposition 3.2).
     if (ICM > TAU * prev_ICM) {
       rho *= GAM;
     }
 
-    // ── Step 5: Convergence check — exit when ICM ≤ ftol. ────────────────
+    // ── Step 5: convergence — exit when ICM ≤ ftol
+    // ──────────────────────────── ICM ≤ ftol means all equality residuals |hᵢ|
+    // and all complementarity residuals max(gⱼ, −μⱼ/ρ) are below the requested
+    // tolerance; the primal iterate is approximately feasible (B&M §3.2,
+    // stopping criterion S1).
     if (ICM <= ftol) {
       break;
     }
@@ -393,7 +422,7 @@ AugLag(O, E, I, T1, T2) -> AugLag<O, E, I>;
 /**
  * @brief Builds an equality-constraint @c diff::Equation from expressions.
  *
- * Each @p cs is a @c CExpression representing @f$h_k(\mathbf{x}) = 0@f$.
+ * Each @p cs is a @c CExpression representing @f$ h_k(\mathbf{x}) = 0 @f$.
  * @code
  *   auto h = x + y - 1.0;
  *   AugLag al{f, make_eq(h), std::tuple{}};
@@ -406,9 +435,9 @@ template <diff::CExpression... Cs> auto make_eq(Cs &&...cs) {
 /**
  * @brief Builds an inequality-constraint @c diff::Equation from expressions.
  *
- * Each @p cs is a @c CExpression representing @f$g_k(\mathbf{x}) \le 0@f$.
+ * Each @p cs is a @c CExpression representing @f$ g_k(\mathbf{x}) \le 0 @f$.
  * @code
- *   auto g = x * x + y * y - 1.0;   // circle constraint g ≤ 0
+ *   auto g = x * x + y * y - 1.0;   // unit-disk constraint
  *   AugLag al{f, std::tuple{}, make_ineq(g)};
  * @endcode
  */

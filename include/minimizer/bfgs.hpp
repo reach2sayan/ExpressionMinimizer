@@ -20,9 +20,16 @@ enum class QNUpdate {
   SR1,  ///< Symmetric Rank-1: rank-1, no positive-definiteness guarantee
 };
 
-// ── Armijo<Expr> ─────────────────────────────────────────────────────────────
-// Backtracking sufficient-decrease line search.  Owns the expression for
-// eval_at; minimize_fn takes any 1D callable + (fp, slope) and returns t_min.
+/**
+ * @brief Armijo backtracking sufficient-decrease line search.
+ *
+ * Owns the expression for eval_at.  minimize_fn accepts any 1-D callable
+ * together with the current function value @p fp and the directional slope,
+ * and returns the accepted step-length t satisfying the Armijo condition
+ * @f$ f(t) \le f(0) + C_1 \alpha \nabla f \cdot d @f$ (c₁ = 10⁻⁴).
+ *
+ * @tparam Expr  A type satisfying the diff::CExpression concept.
+ */
 template <diff::CExpression Expr> struct Armijo {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
@@ -33,15 +40,37 @@ template <diff::CExpression Expr> struct Armijo {
   value_type fret{};
   const value_type tol;
 
+  /**
+   * @brief Constructs an Armijo line search wrapping the given expression.
+   * @param e     Expression to evaluate.
+   * @param tol_  Tolerance passed through (unused internally; kept for API
+   *              symmetry with Brent/Dbrent).
+   */
   constexpr explicit Armijo(Expr e,
                             value_type tol_ = static_cast<value_type>(1e-8))
       : expr{std::move(e)}, tol{tol_} {}
 
+  /**
+   * @brief Evaluates the expression at point @p p.
+   * @param p  N-dimensional input point.
+   * @return   f(p).
+   */
   constexpr value_type eval_at(const Point &p) {
     expr.update(Syms{}, p);
     return expr.eval();
   }
 
+  /**
+   * @brief Backtracking Armijo line search along a 1-D slice.
+   *
+   * Halves @c alpha up to 40 times until @f$ f(\alpha) \le f_p + C_1 \alpha
+   * \cdot \text{slope} @f$ (Armijo / sufficient-decrease condition).
+   *
+   * @param f1d    1-D callable @c T(T) evaluating @c f(t).
+   * @param fp     @c f(0) — function value at the start of the step.
+   * @param slope  Directional derivative @c ∇f·d at @c t=0.
+   * @return       Accepted step-length α.
+   */
   template <std::invocable<value_type> F>
   constexpr value_type minimize_fn(F f1d, value_type fp,
                                    value_type slope) const {
@@ -58,13 +87,19 @@ template <diff::CExpression Expr> struct Armijo {
 template <diff::CExpression Expr> Armijo(Expr) -> Armijo<Expr>;
 template <diff::CExpression Expr, typename T> Armijo(Expr, T) -> Armijo<Expr>;
 
-// ── QNDirState ───────────────────────────────────────────────────────────────
-// Reusable direction-state for any quasi-Newton update formula. Maintains a
-// dense N×N inverse-Hessian approximation H. All three formulas share compute
-// and reset; only update differs and is dispatched via if constexpr with zero
-// runtime overhead and no duplicated code.
-//
-// Used both as the DirState inside QuasiNewton<…> and directly in bfgs_armijo.
+/**
+ * @brief Reusable direction state for quasi-Newton update formulas.
+ *
+ * Maintains a dense N×N inverse-Hessian approximation H (initialised to I).
+ * All three formulas share compute() and reset(); only update() differs,
+ * dispatched at compile time via @c if constexpr with zero runtime overhead.
+ *
+ * Used as the @c DirState inside QuasiNewton<…> and directly in bfgs_armijo.
+ *
+ * @tparam T      Numeric scalar type.
+ * @tparam N      Dimension of the search space.
+ * @tparam Update Inverse-Hessian update formula (BFGS, DFP, or SR1).
+ */
 template <diff::Numeric T, int N, QNUpdate Update> struct QNDirState {
   using Point = Eigen::Vector<T, N>;
   Eigen::Matrix<T, N, N> H = Eigen::Matrix<T, N, N>::Identity();
@@ -123,6 +158,16 @@ template <diff::Numeric T, int N, QNUpdate Update> struct QNDirState {
   }
 };
 
+/**
+ * @brief CRTP base shared by QuasiNewton and LBFGS.
+ *
+ * Owns the 1-D line-search object @c ls, gradient evaluation (via reverse-mode
+ * AD), and the unified quasi_newton_impl loop.  Derived classes supply their
+ * own @c DirState and call quasi_newton_impl with it.
+ *
+ * @tparam Expr  A type satisfying the diff::CExpression concept.
+ * @tparam LS1D  Line-search policy (Brent, Dbrent, or Armijo).
+ */
 template <diff::CExpression Expr, template <diff::CExpression> class LS1D>
 struct QuasiNewtonBase {
   using value_type = typename Expr::value_type;
@@ -137,21 +182,38 @@ protected:
   const value_type gtol;
 
 public:
+  /**
+   * @brief Constructs the base wrapping the given expression.
+   * @param e      Expression to minimize.
+   * @param gtol_  Scaled-gradient convergence tolerance; passed to ls.
+   */
   constexpr explicit QuasiNewtonBase(Expr e, value_type gtol_)
       : ls(std::move(e), gtol_), gtol(gtol_) {}
 
+  /// @brief Evaluates the expression at point @p p.
   constexpr value_type eval_at(const Point &p) { return ls.eval_at(p); }
+  /// @brief Callable interface delegating to eval_at.
   constexpr value_type operator()(const Point &p) { return eval_at(p); }
+  /// @brief Returns f at the best point after the last minimize() call.
   constexpr value_type get_optimal_value() const { return fret; }
+  /**
+   * @brief Evaluates the expression and its reverse-mode gradient at @p p.
+   * @param p  N-dimensional input point.
+   * @return   {f(p), ∇f(p)} as an std::pair.
+   */
   constexpr std::pair<value_type, Point> eval_grad(const Point &p) {
     ls.expr.update(Syms{}, p);
     const auto g_arr = diff::gradient<diff::DiffMode::Reverse>(ls.expr);
     return {ls.expr.eval(), Eigen::Map<const Point>(g_arr.data())};
   }
 
-  // Returns a line search callable (xc, xi, fp, slope) → dx for
-  // quasi_newton_impl. Dispatches to the owned ls.minimize_fn; Armijo needs
-  // fp/slope, Brent/Dbrent do bracket + 1D minimization.
+  /**
+   * @brief Returns a line-search callable @c (xc, xi, fp, slope) → dx.
+   *
+   * Dispatches to the owned @c ls.minimize_fn.  Armijo uses @c fp and
+   * @c slope for the sufficient-decrease check; Brent/Dbrent bracket on
+   * [0, 1] and ignore those arguments.
+   */
   constexpr auto make_line_search_fn();
 
 protected:
@@ -242,9 +304,16 @@ struct QuasiNewton : QuasiNewtonBase<Expr, LS1D> {
   using Base::gtol;
   using typename Base::Point;
   using typename Base::value_type;
+  using Base::make_line_search_fn;
+  using Base::quasi_newton_impl;
 
   static constexpr int ITMAX = 200;
 
+  /**
+   * @brief Constructs a QuasiNewton minimizer wrapping the given expression.
+   * @param e      Expression to minimize.
+   * @param gtol_  Scaled-gradient convergence tolerance (default 10⁻⁸).
+   */
   constexpr explicit QuasiNewton(
       Expr e, value_type gtol_ = static_cast<value_type>(1e-8))
       : Base(std::move(e), gtol_) {}
@@ -256,9 +325,9 @@ struct QuasiNewton : QuasiNewtonBase<Expr, LS1D> {
    */
   constexpr Point minimize(Point p) {
     const auto eg = [this](const Point &q) { return this->eval_grad(q); };
-    auto ls_fn = this->make_line_search_fn();
+    auto ls_fn = make_line_search_fn();
     DirState ds;
-    p = this->quasi_newton_impl(eg, std::move(p), gtol, ITMAX, ls_fn, ds,
+    p = quasi_newton_impl(eg, std::move(p), gtol, ITMAX, ls_fn, ds,
                                 this->iter);
     fret = eval_at(p);
     return p;

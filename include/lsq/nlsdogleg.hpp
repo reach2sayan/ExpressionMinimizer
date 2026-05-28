@@ -7,6 +7,16 @@
 
 namespace exprmin {
 
+/**
+ * @brief Selects the dogleg step geometry used by NLSDogleg.
+ *
+ * - @c Standard — classic two-segment path: Cauchy → Gauss-Newton
+ *                 (Powell 1970; N&W §10.1).
+ * - @c Double   — Byrd–Schnabel–Shultz scaled variant: scales the GN leg
+ *                 by a damping factor t ∈ [0.2, 1] derived from a Powell
+ *                 condition, softening aggressive GN steps on ill-scaled
+ * problems.
+ */
 enum class DoglegVariant { Standard, Double };
 
 /**
@@ -23,7 +33,8 @@ enum class DoglegVariant { Standard, Double };
  *                (Powell 1970; N&W §10.1 eq. 10.13).
  *   - Double   — Byrd–Schnabel–Shultz scaled variant: scales the Gauss-Newton
  *                leg by a damping factor t ∈ [0.2, 1] derived from a Powell
- *                condition, softening aggressive GN steps on badly scaled problems.
+ *                condition, softening aggressive GN steps on badly scaled
+ * problems.
  *
  * @tparam System  diff::Equation<RExprs...> specialisation.
  * @tparam DV      DoglegVariant::Standard or DoglegVariant::Double.
@@ -95,14 +106,16 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(const ParamVec &g,
     return (delta / norm_sd) * dx_sd;
   }
 
-  // Step 4: Case 2 — Gauss-Newton step fits inside the region: return it directly.
+  // Step 4: Case 2 — Gauss-Newton step fits inside the region: return it
+  // directly.
   if (norm_gn <= delta) {
     return dx_gn;
   }
 
-  // Step 5 (Double variant only): compute Byrd–Schnabel–Shultz damping factor t.
-  // c measures how well the GN direction is aligned with −g via a Powell condition;
-  // t ∈ [0.2, 1] scales p^GN to avoid over-aggressive steps on ill-scaled problems.
+  // Step 5 (Double variant only): compute Byrd–Schnabel–Shultz damping factor
+  // t. c measures how well the GN direction is aligned with −g via a Powell
+  // condition; t ∈ [0.2, 1] scales p^GN to avoid over-aggressive steps on
+  // ill-scaled problems.
   auto t = value_type{1};
   if constexpr (DV == DoglegVariant::Double) {
     const auto gBg = g.dot(B * g);
@@ -110,7 +123,7 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(const ParamVec &g,
     if (gBg > value_type{0} && gdx > value_type{0}) {
       const auto g2 = g.squaredNorm();
       const auto c = min(value_type{1}, (g2 * g2) / (gBg * gdx));
-      t = value_type{1} - value_type{0.8} * (value_type{1} - c);  // t ∈ [0.2, 1]
+      t = value_type{1} - value_type{0.8} * (value_type{1} - c); // t ∈ [0.2, 1]
     }
     // If the scaled GN step still fits, return it clipped to the boundary.
     if (t * norm_gn <= delta) {
@@ -126,7 +139,7 @@ NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(const ParamVec &g,
   const auto c_q = dx_sd.squaredNorm() - delta * delta;
   auto disc = b_q * b_q - value_type{4} * a_q * c_q;
   if (disc < value_type{0}) {
-    disc = value_type{0};  // guard against floating-point noise
+    disc = value_type{0}; // guard against floating-point noise
   }
   const auto beta = (-b_q + sqrt(disc)) / (value_type{2} * a_q);
   return dx_sd + beta * d;
