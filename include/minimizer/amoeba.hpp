@@ -11,20 +11,27 @@ namespace exprmin {
 
 namespace mp = boost::mp11;
 
-// NR §10.4 — Nelder-Mead downhill simplex method.
-//
-// Derivative-free N-dim minimizer.  Maintains a simplex of N+1 vertices,
-// progressively shrinking it toward the minimum via reflection, expansion,
-// and contraction moves.  No line search; no gradient required.
-//
-// Simplex is stored as an N×(N+1) Eigen matrix; each column is a vertex.
-// FVals is an Eigen vector of length N+1 storing f at each vertex.
-//
-// amotry convention (NR §10.4):  psum = sum of all N+1 vertices; fac=-1
-// reflects, fac=2 expands, fac=0.5 contracts.  Derivation:
-//   centroid c = (psum − s.col(ihi)) / N
-//   ptry = psum·fac1 − s.col(ihi)·fac2,  fac1=(1−fac)/N, fac2=fac1−fac
-// which gives ptry = c + fac·(c − s.col(ihi)) for each sign of fac.
+/**
+ * @brief NR §10.5 — Nelder–Mead downhill simplex minimizer.
+ *
+ * Derivative-free N-dimensional minimizer.  Maintains a simplex of N+1
+ * vertices, progressively shrinking it toward the minimum via reflection,
+ * expansion, and contraction moves.  No line search or gradient required.
+ *
+ * The simplex is stored as an N×(N+1) Eigen matrix where each column is a
+ * vertex; @c FVals is an (N+1)-vector of the corresponding function values.
+ *
+ * **amotry step convention** (NR §10.5): @c psum is the column-sum of all
+ * N+1 vertices.  For reflection factor @c fac:
+ * @code
+ *   fac1 = (1 − fac) / N,  fac2 = fac1 − fac
+ *   ptry = psum·fac1 − s.col(ihi)·fac2
+ *        = c + fac·(c − s.col(ihi)),   c = centroid of the remaining N vertices
+ * @endcode
+ * Canonical values: fac = −1 (reflect), 2 (expand), 0.5 (contract).
+ *
+ * @tparam Expr  A type satisfying the diff::CExpression concept.
+ */
 template <diff::CExpression Expr> struct Amoeba {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
@@ -44,22 +51,70 @@ private:
   const value_type ftol;
 
 public:
+  /**
+   * @brief Constructs an Amoeba minimizer wrapping the given expression.
+   * @param e      Expression to minimize.
+   * @param ftol_  Convergence tolerance on the relative function-value spread
+   *               between the best and worst simplex vertices (default 3×10⁻⁸).
+   */
   constexpr explicit Amoeba(Expr e,
                             value_type ftol_ = static_cast<value_type>(3.0e-8))
       : expr{std::move(e)}, ftol{ftol_} {}
 
+  /**
+   * @brief Evaluates the expression at point @p p.
+   * @param p  N-dimensional input point.
+   * @return   f(p).
+   */
   constexpr value_type eval_at(const Point &p) {
     expr.update(Syms{}, p);
     return expr.eval();
   }
+
+  /// @brief Callable interface for eval_at — lets Amoeba act as a functor for amotry_impl.
   constexpr value_type operator()(const Point &p) { return eval_at(p); }
+
+  /// @brief Returns f at the best vertex after the last minimize() call.
   constexpr value_type get_optimal_value() const { return fret; }
+
+  /**
+   * @brief Builds an initial simplex around @p p and minimizes.
+   *
+   * Constructs the simplex via detail::make_simplex (vertex 0 = p; vertex i+1
+   * = p with component i perturbed by @p delta), then delegates to the
+   * Simplex overload.
+   *
+   * @param p      Initial centre point.
+   * @param delta  Side-length of the initial simplex.
+   * @return Approximate minimizer (best vertex on convergence or ITMAX).
+   */
   constexpr Point minimize(const Point &p, const value_type &delta) {
     return minimize(detail::make_simplex(p, delta));
   }
+
+  /**
+   * @brief Runs the Nelder–Mead loop on a pre-built simplex.
+   * @param s  N×(N+1) matrix whose columns are the initial vertices.
+   * @return Approximate minimizer (best vertex on convergence or ITMAX).
+   */
   constexpr Point minimize(Simplex s);
 };
 
+/**
+ * @brief Nelder–Mead main loop.
+ *
+ * Each iteration:
+ *  1. Identifies the best (ilo), worst (ihi), and second-worst (inhi) vertices.
+ *  2. Checks convergence: exits when the relative spread |y[ihi]−y[ilo]| /
+ *     (|y[ihi]|+|y[ilo]|) drops below ftol.
+ *  3. **Reflect** ihi through the centroid (fac = −1).
+ *     - If the reflection beats the current best → **expand** (fac = 2).
+ *     - Else if reflection is still worse than second-worst → **contract**
+ *       (fac = 0.5).  If contraction also fails → **shrink** every vertex
+ *       halfway toward the best.
+ *
+ * Returns the best vertex found, with the function value stored in fret.
+ */
 template <diff::CExpression Expr>
 constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
   FVals y;
@@ -72,7 +127,7 @@ constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
     // Indices of best (ilo), worst (ihi), second-worst (inhi)
     Eigen::Index ilo_idx;
     y.minCoeff(&ilo_idx);
-    const std::size_t ilo = static_cast<std::size_t>(ilo_idx);
+    const auto ilo = static_cast<std::size_t>(ilo_idx);
 
     std::size_t ihi = (y[0] > y[1]) ? 0uz : 1uz;
     std::size_t inhi = 1uz - ihi;
