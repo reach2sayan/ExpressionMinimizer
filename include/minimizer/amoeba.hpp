@@ -71,7 +71,8 @@ public:
     return expr.eval();
   }
 
-  /// @brief Callable interface for eval_at — lets Amoeba act as a functor for amotry_impl.
+  /// @brief Callable interface for eval_at — lets Amoeba act as a functor for
+  /// amotry_impl.
   constexpr value_type operator()(const Point &p) { return eval_at(p); }
 
   /// @brief Returns f at the best vertex after the last minimize() call.
@@ -117,10 +118,8 @@ public:
  */
 template <diff::CExpression Expr>
 constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
-  FVals y;
-  for (auto i : std::views::iota(0uz, N + 1)) {
-    y[i] = eval_at(s.col(i));
-  }
+  FVals y =
+      FVals::NullaryExpr([&](Eigen::Index i) { return eval_at(s.col(i)); });
 
   Point psum = s.rowwise().sum();
   for (iter = 0; iter < ITMAX; ++iter) {
@@ -129,16 +128,11 @@ constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
     y.minCoeff(&ilo_idx);
     const auto ilo = static_cast<std::size_t>(ilo_idx);
 
-    std::size_t ihi = (y[0] > y[1]) ? 0uz : 1uz;
-    std::size_t inhi = 1uz - ihi;
-    for (auto i : std::views::iota(2uz, N + 1)) {
-      if (y[i] > y[ihi]) {
-        inhi = ihi;
-        ihi = i;
-      } else if (y[i] > y[inhi] && i != ihi) {
-        inhi = i;
-      }
-    }
+    Eigen::Index ihi_idx;
+    y.maxCoeff(&ihi_idx);
+    const auto ihi = static_cast<std::size_t>(ihi_idx);
+    auto not_ihi = std::views::iota(0uz, N + 1) | std::views::filter([ihi](auto i) { return i != ihi; });
+    const std::size_t inhi = *std::ranges::max_element(not_ihi, std::less{}, [&y](std::size_t i) { return y[i]; });
 
     // Convergence: relative spread between best and worst
     if (value_type{2} * std::abs(y[ihi] - y[ilo]) /
@@ -157,12 +151,13 @@ constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
                                                 value_type{0.5});
       if (ytry >= ysave) {
         // Contraction failed — shrink whole simplex toward best
-        for (auto i : std::views::iota(0uz, N + 1)) {
-          if (i != ilo) {
-            s.col(i) = value_type{0.5} * (s.col(i) + s.col(ilo));
-            y[i] = eval_at(s.col(i));
-          }
-        }
+        std::ranges::for_each(
+            std::views::iota(0uz, N + 1) |
+                std::views::filter([ilo](auto i) { return i != ilo; }),
+            [&](std::size_t i) {
+              s.col(i) = value_type{0.5} * (s.col(i) + s.col(ilo));
+              y[i] = eval_at(s.col(i));
+            });
         psum = s.rowwise().sum();
       }
     }
