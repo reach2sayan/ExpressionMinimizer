@@ -42,7 +42,7 @@ struct BracketFn {
     constexpr T GLIMIT{100};
     constexpr T TINY{1.0e-20};
 
-    auto reset = [&f, &GOLD](T &u, T &fu, const T cx, const T bx) {
+    auto reset = [&f](T &u, T &fu, const T cx, const T bx) {
       u = cx + GOLD * (cx - bx);
       fu = f(u);
     };
