@@ -6,13 +6,13 @@
  *        arguments, for optimizers where CTAD alone is insufficient.
  */
 
-#include "dogleg.hpp"
-#include "frprmn.hpp"
 #include "../lsq/gaussnewton.hpp"
-#include "lbfgs.hpp"
 #include "../lsq/levmar.hpp"
 #include "../lsq/nlsdogleg.hpp"
 #include "../lsq/subspace2d.hpp"
+#include "dogleg.hpp"
+#include "frprmn.hpp"
+#include "lbfgs.hpp"
 
 #include <boost/mp11/algorithm.hpp>
 #include <boost/mp11/list.hpp>
@@ -41,8 +41,7 @@ auto make_nls_dogleg(Rs... rs) {
  * @param rs   Residual expressions (passed by value, moved into the system).
  * @return     Subspace2D<diff::Equation<Rs...>>.
  */
-template <diff::CExpression... Rs>
-auto make_subspace2d(Rs... rs) {
+template <diff::CExpression... Rs> auto make_subspace2d(Rs... rs) {
   return Subspace2D<diff::Equation<Rs...>>{diff::Equation{std::move(rs)...}};
 }
 
@@ -62,7 +61,7 @@ auto make_subspace2d(Rs... rs) {
  */
 template <char... InputChars, diff::CExpression Expr>
 auto make_lm(Expr e, typename Expr::value_type ftol = 1e-8) {
-  using AllSyms   = diff::extract_symbols_from_expr_t<Expr>;
+  using AllSyms = diff::extract_symbols_from_expr_t<Expr>;
   using InputSyms = mp::mp_list<std::integral_constant<char, InputChars>...>;
   using ParamSyms = mp::mp_set_difference<AllSyms, InputSyms>;
   return LevenbergMarquardt<Expr, ParamSyms, InputSyms>{std::move(e), ftol};
@@ -80,7 +79,7 @@ auto make_lm(Expr e, typename Expr::value_type ftol = 1e-8) {
  */
 template <char... InputChars, diff::CExpression Expr>
 auto make_gn(Expr e, typename Expr::value_type ftol = 1e-8) {
-  using AllSyms   = diff::extract_symbols_from_expr_t<Expr>;
+  using AllSyms = diff::extract_symbols_from_expr_t<Expr>;
   using InputSyms = mp::mp_list<std::integral_constant<char, InputChars>...>;
   using ParamSyms = mp::mp_set_difference<AllSyms, InputSyms>;
   return GaussNewton<Expr, ParamSyms, InputSyms>{std::move(e), ftol};

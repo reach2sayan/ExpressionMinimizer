@@ -12,7 +12,9 @@ namespace mp = boost::mp11;
 /**
  * @brief Selects how the Hessian approximation B is maintained by Dogleg.
  *
- * - @c BFGS    — rank-2 symmetric update applied directly to B (eq. 6.17).
+ * - @c BFGS    — rank-2 symmetric update applied directly to B (N&W eq. 6.19):
+ *               B_{k+1} = B_k − (B_k s_k s_k^T B_k)/(s_k^T B_k s_k)
+ *                              + (y_k y_k^T)/(y_k^T s_k)
  *               Cheaper per iteration; accurate only asymptotically near the
  *               solution.
  * - @c ExactAD — exact Hessian ∇²f(xₖ) recomputed every iteration via
@@ -117,7 +119,7 @@ struct Dogleg
   }
 
   // ExactAD path: B = ∇²f(xₖ) recomputed exactly at the start of each outer
-  // iteration.  BFGS path is a no-op (base-class default handles it).
+  // iteration.  BFGS path: no-op here; B is updated in commit_state instead.
   constexpr void refresh_hessian(const Point &p, Matrix &B) {
     if constexpr (HM == HessianMode::ExactAD) {
       expr.update(Syms{}, p);
@@ -190,10 +192,12 @@ struct Dogleg
    * @brief Adapts the trust-region radius (Alg. 4.1 policy, libdogleg variant).
    *
    * Standard Alg. 4.1 shrinks Δ by TR_DOWN_FACTOR whenever ρ < ¼.  The
-   * libdogleg variant first collapses Δ to ‖p^B‖ (the Newton-step length,
-   * cached in nn_) when the accepted step was strictly interior (at_boundary
-   * false), then applies the factor.  This avoids over-aggressive shrinking
-   * when Δ is already larger than the Newton step needs.
+   * libdogleg variant additionally collapses Δ to ‖p^B‖ (the Newton-step
+   * length, cached in nn_) when the poor/rejected step was strictly interior
+   * (!at_boundary, i.e. compute_step returned the full Newton step p^B), then
+   * applies the shrink factor.  This resets Δ to the Newton-step scale before
+   * shrinking, rather than shrinking from a radius that was already larger than
+   * the Newton step needed.
    *
    * Expansion by TR_UP_FACTOR occurs only when ρ > ¾ and the step hit the
    * boundary, matching the condition in Alg. 4.1.
@@ -204,7 +208,8 @@ struct Dogleg
    * @brief Updates gradient and Hessian approximation after an accepted step.
    *
    * BFGS mode applies the symmetric rank-2 update to B (the Hessian approx.,
-   * not its inverse H), derived from eq. 6.17 by duality:
+   * not its inverse H).  The formula (N&W eq. 6.19, obtained from the BFGS
+   * inverse-Hessian update eq. 6.17 via Sherman-Morrison-Woodbury inversion) is:
    *
    *   B_new = B − (Bs)(Bs)ᵀ/(sᵀBs) + yyᵀ/(yᵀs)
    *

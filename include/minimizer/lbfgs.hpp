@@ -45,6 +45,11 @@ struct LBFGS : QuasiNewtonBase<Expr, LS1D> {
   using typename Base::value_type;
   static constexpr int ITMAX = 200;
 
+  /**
+   * @brief Constructs an LBFGS minimizer wrapping the given expression.
+   * @param e      Expression to minimize.
+   * @param gtol_  Scaled-gradient convergence tolerance (default 10⁻⁸).
+   */
   constexpr explicit LBFGS(Expr e,
                            value_type gtol_ = static_cast<value_type>(1e-8))
       : Base(std::move(e), gtol_) {}

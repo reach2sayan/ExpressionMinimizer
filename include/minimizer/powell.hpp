@@ -145,8 +145,6 @@ constexpr typename Powell<Expr>::Point Powell<Expr>::minimize(Point p,
       }
     }
   }
-  // the else branch preserves the same direction set, as the new direction
-  // is all played out
   return p;
 }
 

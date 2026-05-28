@@ -119,8 +119,7 @@ public:
    * @return Approximate minimizer.
    */
   constexpr Point minimize(Simplex s) {
-    FVals y = Eigen::VectorXd::NullaryExpr(
-        N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
+    FVals y = FVals::NullaryExpr([&](Eigen::Index i) { return eval_at(s.col(i)); });
     auto &&[ybest, pbest] = HotPhaseSA(std::move(s), y);
     s = detail::make_simplex(pbest, cold_delta);
     std::tie(ybest, pbest) =
@@ -244,7 +243,7 @@ constexpr std::tuple<typename SimAnneal<Expr>::value_type,
 SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y) {
 
   FVals yy =
-      y.unaryExpr([&, this](double v) { return v + this->bolt(temperature); });
+      y.unaryExpr([&, this](value_type v) { return v + this->bolt(temperature); });
   Eigen::Index ib_idx;
   y.minCoeff(&ib_idx);
   auto ib = static_cast<std::size_t>(ib_idx);
@@ -255,8 +254,7 @@ SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y) {
   for (iter = 0; iter < NMAX && temperature > TINY; ++iter) {
     if (iter > 0 && iter % epoch_steps == 0) {
       temperature *= cooling;
-      yy = Eigen::VectorXd::NullaryExpr(
-          y.size(), [&](Eigen::Index i) { return y[i] + bolt(temperature); });
+      yy = FVals::NullaryExpr([&](Eigen::Index i) { return y[i] + bolt(temperature); });
     }
 
     Eigen::Index ilo_idx;
@@ -315,8 +313,7 @@ constexpr std::tuple<typename SimAnneal<Expr>::value_type,
 SimAnneal<Expr>::ColdPhaseSA(Simplex s, FVals y, Point pbest,
                              value_type ybest) {
 
-  y.resize(N + 1);
-  y = y.NullaryExpr(N + 1, [&](Eigen::Index i) { return eval_at(s.col(i)); });
+  y = FVals::NullaryExpr([&](Eigen::Index i) { return eval_at(s.col(i)); });
   Point psum = s.rowwise().sum();
 
   static constexpr value_type ATINY{1.0e-20};

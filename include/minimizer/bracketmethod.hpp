@@ -4,8 +4,8 @@
 #include <numbers>
 
 #include "expressions.hpp"
-#include <Eigen/Dense>
 #include "traits.hpp"
+#include <Eigen/Dense>
 #include <boost/mp11/list.hpp>
 
 namespace exprmin {
@@ -89,7 +89,8 @@ struct BracketFn {
           fc = fu;
           reset(u, fu, cx, bx);
         }
-      } else if ((u - ulim) * (ulim - cx) >= T{}) { // parabolic between u and lim
+      } else if ((u - ulim) * (ulim - cx) >=
+                 T{}) { // parabolic between u and lim
         u = ulim;
         fu = f(u);
       } else { // parabolic step overshot ax; take default GOLD step past cx
@@ -138,8 +139,7 @@ template <diff::CExpression Expr> struct Bracketmethod {
 
 private:
   // Binds this instance's (ax,bx,cx,fa,fb,fc) state to the bracket algorithm.
-  template <std::invocable<value_type> F>
-  constexpr void bracket_impl(F &f) {
+  template <std::invocable<value_type> F> constexpr void bracket_impl(F &f) {
     exprmin::bracket(f, ax, bx, cx, fa, fb, fc);
   }
 };

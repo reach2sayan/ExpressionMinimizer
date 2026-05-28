@@ -130,12 +130,9 @@ struct NoRng {}; ///< Zero-size placeholder used when RandomInit = false.
  */
 template <typename T, int N, typename NormalGen>
 Eigen::Matrix<T, N, N + 1> make_simplex_rand(const Eigen::Vector<T, N> &p,
-                                              const T &delta,
-                                              NormalGen &&gen) {
-  Eigen::Matrix<T, N, N> A =
-      Eigen::Matrix<T, N, N>::NullaryExpr([&](Eigen::Index, Eigen::Index) {
-        return gen();
-      });
+                                             const T &delta, NormalGen &&gen) {
+  Eigen::Matrix<T, N, N> A = Eigen::Matrix<T, N, N>::NullaryExpr(
+      [&](Eigen::Index, Eigen::Index) { return gen(); });
   const Eigen::Matrix<T, N, N> Q =
       Eigen::HouseholderQR<Eigen::Matrix<T, N, N>>{A}.householderQ() *
       Eigen::Matrix<T, N, N>::Identity();
@@ -164,14 +161,14 @@ Eigen::Matrix<T, N, N + 1> make_simplex_rand(const Eigen::Vector<T, N> &p,
  * @code
  *   fac1 = (1 − fac) / N,  fac2 = fac1 − fac
  *   ptry = psum·fac1 − s.col(ihi)·fac2
- *        = c + fac·(c − s.col(ihi)),   c = centroid of the remaining N vertices
+ *        = c − fac·(c − s.col(ihi)),   c = centroid of the remaining N vertices
  * @endcode
  * Canonical values: fac = −1 (reflect), 2 (expand), 0.5 (contract).
  *
  * @tparam Expr        A type satisfying the diff::CExpression concept.
  * @tparam RandomInit  When @c true, minimize(p, delta) builds the initial
- *                     simplex from a random orthonormal basis (GSL nmsimplex2rand
- *                     style) using a cached detail::RngBuffer member.  When
+ *                     simplex from a random orthonormal basis (GSL
+ * nmsimplex2rand style) using a cached detail::RngBuffer member.  When
  *                     @c false (default), the standard axis-aligned simplex is
  *                     used and no RNG state is stored.
  */
@@ -193,8 +190,7 @@ private:
   int iter{};
   const value_type ftol;
 
-  using RngType = std::conditional_t<RandomInit,
-                                     detail::RngBuffer<value_type>,
+  using RngType = std::conditional_t<RandomInit, detail::RngBuffer<value_type>,
                                      detail::NoRng>;
   [[no_unique_address]] RngType rng_;
 
@@ -243,7 +239,7 @@ public:
     if constexpr (RandomInit)
       return minimize(
           detail::make_simplex_rand<value_type, static_cast<int>(N)>(p, delta,
-                                                                      rng_));
+                                                                     rng_));
     else
       return minimize(detail::make_simplex(p, delta));
   }
@@ -339,9 +335,8 @@ template <diff::CExpression Expr, typename T> Amoeba(Expr, T) -> Amoeba<Expr>;
 
 /// @brief Factory for the standard axis-aligned simplex variant.
 template <diff::CExpression Expr>
-auto make_amoeba(Expr e,
-                 typename Expr::value_type ftol =
-                     static_cast<typename Expr::value_type>(3.0e-8)) {
+auto make_amoeba(Expr e, typename Expr::value_type ftol =
+                             static_cast<typename Expr::value_type>(3.0e-8)) {
   return Amoeba<Expr, false>{std::move(e), ftol};
 }
 
