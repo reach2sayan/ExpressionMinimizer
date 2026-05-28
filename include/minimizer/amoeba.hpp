@@ -147,7 +147,6 @@ constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
       fret = y[ilo];
       return s.col(ilo);
     }
-
     value_type ytry = detail::amotry_impl<value_type, N>(*this, s, y, psum, ihi,
                                                          value_type{-1});
     if (ytry <= y[ilo]) {
