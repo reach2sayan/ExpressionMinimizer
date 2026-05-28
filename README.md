@@ -21,9 +21,9 @@ reverse-mode automatic differentiation — no hand-coded derivatives required.
 | `Amoeba` | NR §10.5 | Nelder–Mead downhill simplex |
 | `SimAnneal` | NR §10.12 | Simulated annealing + Amoeba cold refinement |
 | `Powell` | NR §10.6 | Powell's conjugate-direction method |
-| `Frprmn` / `DFrprmn` | NR §10.7 | Fletcher–Reeves / Polak–Ribière conjugate gradient |
-| `BFGS` | NR §10.9 | Quasi-Newton, rank-2 BFGS inverse-Hessian |
-| `DFP` | NR §10.9 | Quasi-Newton, rank-2 DFP inverse-Hessian |
+| `Frprmn` / `DFrprmn` | NR §10.6 | Fletcher–Reeves / Polak–Ribière conjugate gradient |
+| `BFGS` | NR §10.7 | Quasi-Newton, rank-2 BFGS inverse-Hessian |
+| `DFP` | NR §10.7 | Quasi-Newton, rank-2 DFP inverse-Hessian |
 | `SR1` | Nocedal §6.2 | Quasi-Newton, rank-1 symmetric inverse-Hessian |
 | `DBFGS` / `ABFGS` | — | BFGS + Dbrent / Armijo line search |
 | `LBFGS` | Nocedal §7.2 | Limited-memory BFGS (two-loop, circular (s,y) buffer) |
