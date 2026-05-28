@@ -148,6 +148,9 @@ constexpr T brent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
   using std::min;
   constexpr T CGOLD = static_cast<T>(1.0 - 1.0 / std::numbers::phi_v<double>);
 
+  // Three points x (best), w (2nd), v (3rd) are kept ranked as fx≤fw≤fv.
+  // The parabolic interpolation below fits a curve through all three, so the
+  // housekeeping at the end of each iteration must update them every step.
   T a = min(ax, cx); // sort so a ≤ b regardless of the input order
   T b = max(ax, cx);
   T x = bx, w = bx, v = bx;
@@ -203,10 +206,6 @@ constexpr T brent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
     const T fu = f(u);
 
     // --- housekeeping: tighten the bracket and maintain the ranked trio ---
-    // Brent tracks three points x (best), w (2nd), v (3rd) kept as fx≤fw≤fv.
-    // The parabolic interpolation above needs all three to fit a curve, so we
-    // must keep them up to date every iteration.
-    //
     // Part 1 — tighten [a, b]: u proves the minimum cannot be on one side of
     // x, so we move whichever bound is on that side inward.
     //   fu ≤ fx  →  x is now interior; the side opposite u can be discarded.
@@ -278,6 +277,9 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
   using std::max;
   using std::min;
 
+  // Same three-point ranked trio as brent (x best, w 2nd, v 3rd, fx≤fw≤fv),
+  // but each point also carries its derivative (dx, dw, dv) so the secant
+  // step can be computed without extra f' calls during housekeeping.
   T a = min(ax, cx), b = max(ax, cx);
   T x = bx, w = bx, v = bx;
   T fx = f(bx), fw = fx, fv = fx;
@@ -292,36 +294,48 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
       return x;
     }
 
+    // Bisect toward the side where f' points downhill; used whenever the
+    // secant step is unavailable or unreliable (same role as golden section
+    // in plain Brent, but guided by the sign of the derivative).
+    auto bisect = [](const T dx, const T a, const T b, const T x) {
+      return dx >= T{} ? a - x : b - x;
+    };
+
     if (abs(e) > tol1) {
-      // Attempt secant steps using (x,w) and (x,v) pairs
+      // Attempt secant steps using the (x,w) and (x,v) derivative pairs.
+      // Initialise d1/d2 to a value outside [a,b] so ok1/ok2 stays false
+      // for whichever pair has equal derivatives (no valid secant step).
       T d1 = T{2} * (b - a), d2 = d1;
       if (dw != dx) {
-        d1 = (w - x) * dx / (dx - dw);
+        d1 = (w - x) * dx / (dx - dw); // secant step through (x, w)
       }
       if (dv != dx) {
-        d2 = (v - x) * dx / (dx - dv);
+        d2 = (v - x) * dx / (dx - dv); // secant step through (x, v)
       }
       const T u1 = x + d1, u2 = x + d2;
+      // a step is acceptable only if it lands inside [a,b] and moves
+      // in the downhill direction (dx·d ≤ 0)
       const bool ok1 = (a - u1) * (u1 - b) > T{} && dx * d1 <= T{};
       const bool ok2 = (a - u2) * (u2 - b) > T{} && dx * d2 <= T{};
       const T olde = e;
       e = d;
       if (ok1 || ok2) {
+        // prefer the shorter of the two valid steps
         d = (ok1 && ok2) ? (abs(d1) < abs(d2) ? d1 : d2) : (ok1 ? d1 : d2);
         if (abs(d) <= abs(T{0.5} * olde)) {
           const T u = x + d;
           if (u - a < tol2 || b - u < tol2)
             d = (xm >= x ? tol1 : -tol1);
         } else {
-          e = (dx >= T{} ? a - x : b - x);
+          e = bisect(dx, a, b, x);
           d = T{0.5} * e;
         }
       } else {
-        e = (dx >= T{} ? a - x : b - x);
+        e = bisect(dx, a, b, x);
         d = T{0.5} * e;
       }
     } else {
-      e = (dx >= T{} ? a - x : b - x);
+      e = bisect(dx, a, b, x);
       d = T{0.5} * e;
     }
 
@@ -329,6 +343,10 @@ constexpr T dbrent(F &f, const T &ax, const T &bx, const T &cx, const T &tol,
     const T fu = f(u);
     const T du = f.df(u);
 
+    // --- housekeeping: identical bracket/ranking logic to brent, but each
+    // slot in the trio also carries a derivative that must move with it.
+    // The derivative at the demoted point is preserved because the secant
+    // step next iteration needs dx at w and v, not just their positions.
     if (fu <= fx) {
       (u < x ? b : a) = x;
       v = w;
