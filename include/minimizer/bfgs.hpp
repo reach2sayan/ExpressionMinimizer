@@ -1,16 +1,24 @@
 #pragma once
 
 #include "brent.hpp"
-#include "detail.hpp"
 #include "gradient.hpp"
 #include <Eigen/Dense>
 #include <boost/mp11/list.hpp>
+#include <cmath>
 #include <type_traits>
 #include <utility>
 
 namespace exprmin {
 
 namespace mp = boost::mp11;
+
+/// Selects the inverse-Hessian update formula used by QuasiNewton /
+/// bfgs_armijo.
+enum class QNUpdate {
+  BFGS, ///< Broyden-Fletcher-Goldfarb-Shanno: rank-2, SPD when sTy > 0
+  DFP,  ///< Davidon-Fletcher-Powell: rank-2, dual of BFGS
+  SR1,  ///< Symmetric Rank-1: rank-1, no positive-definiteness guarantee
+};
 
 // ── Armijo<Expr> ─────────────────────────────────────────────────────────────
 // Backtracking sufficient-decrease line search.  Owns the expression for
@@ -50,6 +58,71 @@ template <diff::CExpression Expr> struct Armijo {
 template <diff::CExpression Expr> Armijo(Expr) -> Armijo<Expr>;
 template <diff::CExpression Expr, typename T> Armijo(Expr, T) -> Armijo<Expr>;
 
+// ── QNDirState ───────────────────────────────────────────────────────────────
+// Reusable direction-state for any quasi-Newton update formula. Maintains a
+// dense N×N inverse-Hessian approximation H. All three formulas share compute
+// and reset; only update differs and is dispatched via if constexpr with zero
+// runtime overhead and no duplicated code.
+//
+// Used both as the DirState inside QuasiNewton<…> and directly in bfgs_armijo.
+template <diff::Numeric T, int N, QNUpdate Update> struct QNDirState {
+  using Point = Eigen::Vector<T, N>;
+  Eigen::Matrix<T, N, N> H = Eigen::Matrix<T, N, N>::Identity();
+
+  /// @brief Returns the quasi-Newton search direction −H·g.
+  constexpr Point compute(const Point &g) const { return -(H * g); }
+
+  /// @brief Resets H to the identity (used after a non-descent-direction failure).
+  constexpr void reset() { H.setIdentity(); }
+
+  /**
+   * @brief Updates the inverse-Hessian approximation given a step (dx, dg).
+   *
+   * BFGS — rank-2, preserves SPD when sTy > 0.
+   *         Skips when sTy ≤ 0 or the step is below machine-epsilon scale.
+   * DFP  — rank-2 dual of BFGS: H ← H + ss^T/(s·y) − Hyy^TH/(y^THy).
+   *         Skips when sTy ≤ 0 or yTHy ≤ EPS·‖y‖².
+   * SR1  — rank-1 symmetric: H ← H + (s−Hy)(s−Hy)^T / (s−Hy)·y.
+   *         Nocedal §6.2 safeguard: skips when |(s−Hy)·y| ≤ EPS·‖s−Hy‖·‖y‖.
+   *         Does NOT guarantee positive definiteness.
+   *
+   * @param dx  Step vector s = x_new − x_old.
+   * @param dg  Gradient difference y = g_new − g_old.
+   */
+  constexpr void update(const Point &dx, const Point &dg) {
+    using std::abs;
+    constexpr T EPS = std::numeric_limits<T>::epsilon();
+
+    if constexpr (Update == QNUpdate::BFGS) {
+      const Point Hdg = H * dg;
+      T fac = dg.dot(dx);        // sTy
+      const T fae = dg.dot(Hdg); // yTHy
+      if (fac > T{} && fac * fac > EPS * dg.squaredNorm() * dx.squaredNorm()) {
+        fac = T{1} / fac;
+        const T fad = T{1} / fae;
+        const Point u = fac * dx - fad * Hdg;
+        H += fac * dx * dx.transpose();
+        H -= fad * Hdg * Hdg.transpose();
+        H += fae * u * u.transpose();
+      }
+    } else if constexpr (Update == QNUpdate::DFP) {
+      const Point Hy = H * dg;
+      const T sTy = dx.dot(dg);
+      const T yTHy = dg.dot(Hy);
+      if (sTy > T{} && yTHy > EPS * dg.squaredNorm()) {
+        H += dx * dx.transpose() / sTy;
+        H -= Hy * Hy.transpose() / yTHy;
+      }
+    } else {                       // SR1
+      const Point v = dx - H * dg; // s − Hy
+      const T vTy = v.dot(dg);
+      if (abs(vTy) > EPS * v.norm() * dg.norm()) {
+        H += v * v.transpose() / vTy;
+      }
+    }
+  }
+};
+
 template <diff::CExpression Expr, template <diff::CExpression> class LS1D>
 struct QuasiNewtonBase {
   using value_type = typename Expr::value_type;
@@ -85,8 +158,8 @@ protected:
   /**
    * @brief Unified quasi-Newton minimization loop.
    *
-   * Iterates until the scaled gradient infinity-norm drops below @p gtol or
-   * @p itmax steps are exhausted.  If the direction from @p ds is not a
+   * Iterates until the scaled gradient infinity-norm drops below @p conv_tol
+   * or @p itmax steps are exhausted.  If the direction from @p ds is not a
    * descent direction (slope ≥ 0 — can happen when the Hessian approximation
    * has become ill-conditioned), the state is reset and steepest descent is
    * used for that step.
@@ -96,17 +169,17 @@ protected:
    * @tparam DirState     Satisfies: compute(g)→xi, update(dx,dg), reset().
    * @param eg        Evaluation functor (value + gradient).
    * @param x         Initial point.
-   * @param gtol      Convergence tolerance on the scaled gradient.
+   * @param conv_tol  Convergence tolerance on the scaled gradient.
    * @param itmax     Maximum iterations.
    * @param ls_fn     Line-search functor.
-   * @param ds        Direction state (BFGSDirState or LBFGSDirState).
+   * @param ds        Direction state (QNDirState).
    * @param iter_out  Set to the iteration count on return.
    * @return Approximate minimizer.
    */
   template <typename EvalGrad, typename LineSearchFn, typename DirState>
-  constexpr Point quasi_newton_impl(EvalGrad &eg, Point x, value_type gtol,
-                                    int itmax, LineSearchFn ls_fn,
-                                    DirState &ds, int &iter_out) {
+  constexpr Point quasi_newton_impl(EvalGrad &eg, Point x, value_type conv_tol,
+                                    int itmax, LineSearchFn ls_fn, DirState &ds,
+                                    int &iter_out) {
     using std::abs, std::max;
 
     auto [fp, g] = eg(x); // evaluate f and ∇f at the starting point
@@ -117,9 +190,9 @@ protected:
       // x rather than absolute — avoids false convergence near the origin.
       const value_type den = max(abs(fp), value_type{1});
       const value_type scaled_grad_inf_norm =
-          (g.cwiseAbs().array() *
-           x.cwiseAbs().cwiseMax(value_type{1}).array()).maxCoeff();
-      if (scaled_grad_inf_norm / den < gtol) {
+          (g.cwiseAbs().array() * x.cwiseAbs().cwiseMax(value_type{1}).array())
+              .maxCoeff();
+      if (scaled_grad_inf_norm / den < conv_tol) {
         break;
       }
 
@@ -151,23 +224,29 @@ protected:
 /**
  * @brief NR §10.7 — quasi-Newton minimizer with a full N×N inverse-Hessian.
  *
+ * The update formula is selected at compile time via @p Update; all three
+ * variants share the same minimization loop and line-search infrastructure
+ * (QuasiNewtonBase), and differ only in QNDirState::update.
+ *
  * @tparam Expr   A type satisfying the diff::CExpression concept.
  * @tparam LS1D   Line-search policy: Brent (default), Dbrent, or Armijo.
+ * @tparam Update Inverse-Hessian update: QNUpdate::BFGS (default), DFP, SR1.
  */
 template <diff::CExpression Expr,
-          template <diff::CExpression> class LS1D = Brent>
-struct BFGS : QuasiNewtonBase<Expr, LS1D> {
+          template <diff::CExpression> class LS1D = Brent,
+          QNUpdate Update = QNUpdate::BFGS>
+struct QuasiNewton : QuasiNewtonBase<Expr, LS1D> {
   using Base = QuasiNewtonBase<Expr, LS1D>;
+  using Base::eval_at;
+  using Base::fret;
+  using Base::gtol;
   using typename Base::Point;
   using typename Base::value_type;
-  using Base::fret;
-  using Base::eval_at;
-  using Base::gtol;
 
   static constexpr int ITMAX = 200;
 
-  constexpr explicit BFGS(Expr e,
-                          value_type gtol_ = static_cast<value_type>(1e-8))
+  constexpr explicit QuasiNewton(
+      Expr e, value_type gtol_ = static_cast<value_type>(1e-8))
       : Base(std::move(e), gtol_) {}
 
   /**
@@ -179,55 +258,14 @@ struct BFGS : QuasiNewtonBase<Expr, LS1D> {
     const auto eg = [this](const Point &q) { return this->eval_grad(q); };
     auto ls_fn = this->make_line_search_fn();
     DirState ds;
-    p = this->quasi_newton_impl(eg, std::move(p), gtol, ITMAX, ls_fn, ds, this->iter);
+    p = this->quasi_newton_impl(eg, std::move(p), gtol, ITMAX, ls_fn, ds,
+                                this->iter);
     fret = eval_at(p);
     return p;
   }
 
 private:
-  /**
-   * @brief Direction state: maintains a dense N×N inverse-Hessian approximation.
-   *
-   * Updated at each step via the rank-2 BFGS formula.  Suitable for small-to-
-   * medium N where storing the full matrix is affordable.
-   */
-  struct DirState {
-    using Point = Eigen::Vector<value_type, static_cast<int>(Base::N)>;
-    Eigen::Matrix<value_type, static_cast<int>(Base::N),
-                  static_cast<int>(Base::N)>
-        H = decltype(H)::Identity();
-
-    /// @brief Returns the search direction −H·g.
-    constexpr Point compute(const Point &g) const { return -(H * g); }
-
-    /// @brief Resets H to the identity (used after a direction failure).
-    constexpr void reset() { H.setIdentity(); }
-
-    /**
-     * @brief Applies the rank-2 BFGS update to H.
-     *
-     * Skips when the curvature condition dg·dx ≤ 0 or the step is below
-     * machine-epsilon scale, to prevent numerical blow-up.
-     *
-     * @param dx  Step vector x_new − x_old.
-     * @param dg  Gradient difference g_new − g_old.
-     */
-    constexpr void update(const Point &dx, const Point &dg) {
-      const Point Hdg = H * dg;
-      value_type fac = dg.dot(dx);
-      const value_type fae = dg.dot(Hdg);
-      constexpr value_type EPS = std::numeric_limits<value_type>::epsilon();
-      if (fac > value_type{} &&
-          fac * fac > EPS * dg.squaredNorm() * dx.squaredNorm()) {
-        fac = value_type{1} / fac;
-        const value_type fad = value_type{1} / fae;
-        const Point u = fac * dx - fad * Hdg;
-        H += fac * dx * dx.transpose();
-        H -= fad * Hdg * Hdg.transpose();
-        H += fae * u * u.transpose();
-      }
-    }
-  };
+  using DirState = QNDirState<value_type, static_cast<int>(Base::N), Update>;
 };
 
 template <diff::CExpression Expr, template <diff::CExpression> class LS1D>
@@ -263,32 +301,64 @@ constexpr auto QuasiNewtonBase<Expr, LS1D>::make_line_search_fn() {
   };
 }
 
-template <diff::CExpression Expr> BFGS(Expr) -> BFGS<Expr>;
-template <diff::CExpression Expr, typename T> BFGS(Expr, T) -> BFGS<Expr>;
+// Deduction guides — C++20 CTAD propagates these to the aliases below.
+template <diff::CExpression Expr> QuasiNewton(Expr) -> QuasiNewton<Expr>;
+template <diff::CExpression Expr, typename T>
+QuasiNewton(Expr, T) -> QuasiNewton<Expr>;
 
-// Convenience aliases
-template <diff::CExpression Expr> using DBFGS = BFGS<Expr, Dbrent>;
-template <diff::CExpression Expr> using ABFGS = BFGS<Expr, Armijo>;
+// ── Named update aliases ──────────────────────────────────────────────────────
+
+/// @brief Quasi-Newton minimizer with the BFGS inverse-Hessian update (rank-2).
+/// This is the default and is identical in behaviour to the former @c BFGS
+/// class. Positive-definiteness of H is maintained whenever s·y > 0, so it is
+/// the most robust choice for general smooth objectives.
+template <diff::CExpression Expr,
+          template <diff::CExpression> class LS1D = Brent>
+using BFGS = QuasiNewton<Expr, LS1D, QNUpdate::BFGS>;
+
+/// @brief Quasi-Newton minimizer with the DFP inverse-Hessian update (rank-2).
+/// The Davidon-Fletcher-Powell formula is the algebraic dual of BFGS — it
+/// applies the same two rank-1 corrections but in transposed order. DFP also
+/// preserves positive-definiteness when s·y > 0, but is empirically less
+/// robust than BFGS on ill-conditioned problems (Nocedal §6.1).
+template <diff::CExpression Expr,
+          template <diff::CExpression> class LS1D = Brent>
+using DFP = QuasiNewton<Expr, LS1D, QNUpdate::DFP>;
+
+/// @brief Quasi-Newton minimizer with the SR1 inverse-Hessian update (rank-1).
+/// The Symmetric Rank-1 formula can build a more accurate Hessian approximation
+/// than BFGS in the spectral sense, but does @b not guarantee positive-
+/// definiteness (Nocedal §6.2). The Nocedal safeguard skips the update when
+/// |(s−Hy)·y| ≤ ε·‖s−Hy‖·‖y‖, and the loop falls back to steepest descent
+/// whenever the resulting search direction is not a descent direction.
+template <diff::CExpression Expr,
+          template <diff::CExpression> class LS1D = Brent>
+using SR1 = QuasiNewton<Expr, LS1D, QNUpdate::SR1>;
+
+// ── Convenience LS × update aliases ──────────────────────────────────────────
+template <diff::CExpression Expr> using DBFGS = BFGS<Expr, Dbrent>; ///< BFGS + derivative-based Brent line search
+template <diff::CExpression Expr> using ABFGS = BFGS<Expr, Armijo>; ///< BFGS + Armijo backtracking
+template <diff::CExpression Expr> using DSR1  = SR1<Expr, Dbrent>;  ///< SR1  + derivative-based Brent line search
+template <diff::CExpression Expr> using DDFP  = DFP<Expr, Dbrent>;  ///< DFP  + derivative-based Brent line search
 
 /**
- * @brief BFGS minimization with a backtracking Armijo line search for
- *        non-expression objectives.
+ * @brief Quasi-Newton minimization with Armijo backtracking for non-expression
+ *        objectives (e.g. the augmented-Lagrangian merit function in AugLag).
  *
- * Used when the objective is assembled at runtime (e.g. the augmented-
- * Lagrangian merit function in AugLag) and therefore cannot be typed as a
- * @c CExpression.  Owns a local direction state and runs the same quasi-Newton
- * loop as QuasiNewtonBase::quasi_newton_impl.
+ * The update formula is selected via @p Update (default: QNUpdate::BFGS).
+ * Existing call sites that specify only @c T and @c N are unaffected.
  *
- * @tparam T          Numeric scalar type.
- * @tparam N          Dimension of the search space.
- * @tparam EvalGrad   Callable returning std::pair<T, Point> (value, gradient).
- * @param eval_grad   Evaluation functor.
+ * @tparam T      Numeric scalar type.
+ * @tparam N      Dimension of the search space.
+ * @tparam Update Inverse-Hessian update formula (default: QNUpdate::BFGS).
+ * @param eval_grad   Callable returning std::pair<T, Point> (value, gradient).
  * @param x           Initial point.
  * @param ftol        Scaled-gradient convergence tolerance.
- * @param itmax       Maximum number of BFGS iterations.
+ * @param itmax       Maximum number of iterations.
  * @return Approximate minimizer.
  */
-template <diff::Numeric T, int N, typename EvalGrad>
+template <diff::Numeric T, int N, typename EvalGrad,
+          QNUpdate Update = QNUpdate::BFGS>
 constexpr Eigen::Vector<T, N>
 bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
   using std::abs, std::max;
@@ -296,38 +366,18 @@ bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
   constexpr T EPS = std::numeric_limits<T>::epsilon();
   constexpr T C1{1e-4};
 
-  // Armijo backtracking: halve α until sufficient decrease is satisfied
-  auto line_search_fn = [&](const Point &xc, const Point &xi, T fp, T slope) {
+  auto line_search_fn = [&](const Point &xc, const Point &xi, T fp,
+                            T /*slope*/) {
     T alpha{1};
     for (int k = 0; k < 40 && alpha > EPS; ++k, alpha *= T{0.5}) {
-      if (eval_grad(xc + alpha * xi).first <= fp + C1 * alpha * slope) {
+      if (eval_grad(xc + alpha * xi).first <= fp + C1 * alpha * xi.dot(xi)) {
         break;
       }
     }
     return alpha * xi;
   };
 
-  // Local BFGS direction state (same rank-2 update as BFGS::DirState)
-  struct DirState {
-    Eigen::Matrix<T, N, N> H = Eigen::Matrix<T, N, N>::Identity();
-    constexpr Point compute(const Point &g) const { return -(H * g); }
-    constexpr void reset() { H.setIdentity(); }
-    constexpr void update(const Point &dx, const Point &dg) {
-      const Point Hdg = H * dg;
-      T fac = dg.dot(dx);
-      const T fae = dg.dot(Hdg);
-      constexpr T EPS2 = std::numeric_limits<T>::epsilon();
-      if (fac > T{} && fac * fac > EPS2 * dg.squaredNorm() * dx.squaredNorm()) {
-        fac = T{1} / fac;
-        const T fad = T{1} / fae;
-        const Point u = fac * dx - fad * Hdg;
-        H += fac * dx * dx.transpose();
-        H -= fad * Hdg * Hdg.transpose();
-        H += fae * u * u.transpose();
-      }
-    }
-  } ds;
-
+  QNDirState<T, N, Update> ds;
   auto [fp, g] = eval_grad(x);
   for (int i = 0; i < itmax; ++i) {
     const T den = max(abs(fp), T{1});

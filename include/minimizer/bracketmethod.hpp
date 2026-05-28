@@ -1,9 +1,10 @@
 #pragma once
 
 #include <array>
+#include <numbers>
 
-#include "detail.hpp"
 #include "expressions.hpp"
+#include <Eigen/Dense>
 #include "traits.hpp"
 #include <boost/mp11/list.hpp>
 

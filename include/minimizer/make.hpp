@@ -5,11 +5,11 @@
 
 #include "dogleg.hpp"
 #include "frprmn.hpp"
-#include "gaussnewton.hpp"
+#include "../lsq/gaussnewton.hpp"
 #include "lbfgs.hpp"
-#include "levmar.hpp"
-#include "nlsdogleg.hpp"
-#include "subspace2d.hpp"
+#include "../lsq/levmar.hpp"
+#include "../lsq/nlsdogleg.hpp"
+#include "../lsq/subspace2d.hpp"
 
 #include <boost/mp11/algorithm.hpp>
 #include <boost/mp11/list.hpp>

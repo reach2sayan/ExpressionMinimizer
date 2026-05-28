@@ -1,6 +1,6 @@
 #pragma once
 
-#include "trustregionbase.hpp"
+#include "../minimizer/trustregionbase.hpp"
 #include <Eigen/Dense>
 #include <cmath>
 #include <limits>

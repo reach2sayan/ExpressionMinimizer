@@ -1,7 +1,6 @@
 #pragma once
 
 #include "bracketmethod.hpp"
-#include "detail.hpp"
 #include "gradient.hpp"
 #include <limits>
 
@@ -74,10 +73,12 @@ struct BrentFn {
         e = d;
         if (abs(p) >= abs(T{0.5} * q * etemp) || p <= q * (a - x) ||
             p >= q * (b - x)) {
-          // parabolic step is too large or out of bracket; fall back to golden section
+          // parabolic step is too large or out of bracket; fall back to golden
+          // section
           golden_section_step(e, d, a, b, x, xm);
         } else {
-          // parabolic step accepted: inside bracket and at most half of last step
+          // parabolic step accepted: inside bracket and at most half of last
+          // step
           d = p / q;
           u = x + d;
           if (u - a < tol2 || b - u < tol2) {
@@ -344,7 +345,8 @@ public:
   }
 
 private:
-  // Binds this instance's bracket [ax, bx, cx] and tolerances to the brent algorithm.
+  // Binds this instance's bracket [ax, bx, cx] and tolerances to the brent
+  // algorithm.
   template <std::invocable<value_type> F>
   constexpr value_type brent_impl(F &f) {
     return exprmin::brent(f, ax, bx, cx, tol, ZEPS, ITMAX);
@@ -355,8 +357,8 @@ template <diff::CExpression Expr> Brent(Expr) -> Brent<Expr>;
 template <diff::CExpression Expr, typename T> Brent(Expr, T) -> Brent<Expr>;
 
 /**
- * @brief NR §10.4 — Brent + first-derivative (secant on f′ via reverse-mode AD).
- * Inherits all state from Brent; only minimize() differs.
+ * @brief NR §10.4 — Brent + first-derivative (secant on f′ via reverse-mode
+ * AD). Inherits all state from Brent; only minimize() differs.
  */
 template <diff::CExpression Expr> struct Dbrent : Brent<Expr> {
   using Base = Brent<Expr>;
@@ -381,9 +383,9 @@ template <diff::CExpression Expr> struct Dbrent : Brent<Expr> {
   constexpr value_type minimize_fn(FC fc, value_type ax0, value_type bx0);
 
 private:
-  // Binds this instance's bracket [ax, bx, cx] and tolerances to the dbrent algorithm.
-  template <typename FC>
-  constexpr value_type dbrent_impl(FC &fc) {
+  // Binds this instance's bracket [ax, bx, cx] and tolerances to the dbrent
+  // algorithm.
+  template <typename FC> constexpr value_type dbrent_impl(FC &fc) {
     return exprmin::dbrent(fc, ax, bx, cx, tol, Base::ZEPS, Base::ITMAX);
   }
 };
