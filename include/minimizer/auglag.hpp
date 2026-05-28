@@ -22,12 +22,13 @@ namespace detail {
 /**
  * @brief Compile-time constraint counter.
  *
- * Specialised for @c std::tuple<> (zero constraints) and for
- * @c diff::Equation<Ts...> (returns @c output_dim, i.e. the number of
- * scalar constraint expressions).  Used to size the multiplier vectors at
- * compile time.
+ * Primary template handles any @c std::tuple<Ts...> via @c std::tuple_size_v
+ * (typically used as @c std::tuple<> for zero constraints).  Partially
+ * specialised for @c diff::Equation<Ts...> to return @c output_dim, i.e. the
+ * number of scalar constraint expressions.  Used to size the multiplier
+ * vectors at compile time.
  *
- * @tparam T  Either @c std::tuple<> or a @c diff::Equation specialisation.
+ * @tparam T  @c std::tuple<...> or a @c diff::Equation specialisation.
  */
 template <typename T>
 struct constraint_count
@@ -403,8 +404,6 @@ AugLag<Obj, EqConstraints, IneqConstraints>::minimize(Point x) {
   return x;
 }
 
-// ── Deduction guides ─────────────────────────────────────────────────────────
-
 template <diff::CExpression O>
 AugLag(O) -> AugLag<O, std::tuple<>, std::tuple<>>;
 
@@ -416,8 +415,6 @@ AugLag(O, E, I, T) -> AugLag<O, E, I>;
 
 template <diff::CExpression O, typename E, typename I, typename T1, typename T2>
 AugLag(O, E, I, T1, T2) -> AugLag<O, E, I>;
-
-// ── Constraint factories ─────────────────────────────────────────────────────
 
 /**
  * @brief Builds an equality-constraint @c diff::Equation from expressions.

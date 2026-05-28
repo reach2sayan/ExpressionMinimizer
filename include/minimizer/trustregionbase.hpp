@@ -87,7 +87,7 @@ TrustRegionBase<Derived, T, N>::minimize(ParamVec p) {
 
   // Step 1: evaluate f(p₀), gradient g, and initial Hessian approximation B.
   auto [phi, g, B] = self().eval_state(p);
-  T delta = trustregion0;  // initial trust-region radius Δ₀
+  T delta = trustregion0; // initial trust-region radius Δ₀
 
   for (iter = 0; iter < itmax; ++iter) {
     // Step 2: convergence check — scaled ∞-norm of g (N&W §4.1 stopping test).
@@ -107,23 +107,25 @@ TrustRegionBase<Derived, T, N>::minimize(ParamVec p) {
     // at_boundary: ‖p‖ ≈ Δ — needed by adjust_tr to gate radius expansion.
     const bool at_boundary = step.norm() >= T{0.999} * delta;
 
-    // Step 5: predicted reduction from the quadratic model: pred = −(gᵀp + ½pᵀBp).
+    // Step 5: predicted reduction from the quadratic model: pred = −(gᵀp +
+    // ½pᵀBp).
     const T pred = -(g.dot(step) + T{0.5} * step.dot(B * step));
 
-    // Step 6: evaluate f at the trial point; compute ρ = actual/predicted (eq. 4.4).
+    // Step 6: evaluate f at the trial point; compute ρ = actual/predicted
+    // (eq. 4.4).
     const T phi_new = self().eval_trial(p + step);
     const T rho = (pred > T{0}) ? (phi - phi_new) / pred : T{0};
 
     // Step 7: adapt Δ based on ρ (Alg. 4.1 policy).
     self().adjust_tr(delta, rho, at_boundary);
     if (delta < trustregion_min) {
-      break;  // radius collapsed to machine noise; further progress impossible
+      break; // radius collapsed to machine noise; further progress impossible
     }
 
     // Step 8: accept step when ρ > 0; update p, f, g, B.
     if (rho > T{0}) {
       if (step.cwiseAbs().maxCoeff() < tol) {
-        break;  // step negligibly small despite ρ > 0
+        break; // step negligibly small despite ρ > 0
       }
       p += step;
       phi = phi_new;
@@ -136,7 +138,8 @@ TrustRegionBase<Derived, T, N>::minimize(ParamVec p) {
 }
 
 /**
- * @brief Trust-region base for nonlinear least squares over a diff::Equation system.
+ * @brief Trust-region base for nonlinear least squares over a diff::Equation
+ * system.
  *
  * Specialises TrustRegionBase for systems of M ≥ N residual expressions.
  * Implements all eval/commit hooks using the Gauss-Newton approximation
@@ -237,7 +240,8 @@ template <typename Derived, diff::CExpression... RExprs>
 constexpr std::pair<typename NLSTrustRegionBase<Derived, RExprs...>::RVec,
                     typename NLSTrustRegionBase<Derived, RExprs...>::JMat>
 NLSTrustRegionBase<Derived, RExprs...>::eval_rJ(const ParamVec &p) {
-  // Push p into the expression system so evaluate() and jacobian() are consistent.
+  // Push p into the expression system so evaluate() and jacobian() are
+  // consistent.
   system.update(Syms{}, to_arr(p));
 
   // Read residual vector r (M×1).
@@ -249,7 +253,8 @@ NLSTrustRegionBase<Derived, RExprs...>::eval_rJ(const ParamVec &p) {
     r = Eigen::Map<const RVec>(r_arr.data());
   }
 
-  // Read Jacobian J (M×N) from reverse-mode AD; stored row-major by the backend.
+  // Read Jacobian J (M×N) from reverse-mode AD; stored row-major by the
+  // backend.
   const auto J_arr = system.template jacobian<diff::DiffMode::Reverse>();
   JMat J = Eigen::Map<const Eigen::Matrix<value_type, M, N, Eigen::RowMajor>>(
       &J_arr[0][0]);
@@ -267,7 +272,8 @@ NLSTrustRegionBase<Derived, RExprs...>::eval_state(const ParamVec &p) {
   auto [r, J] = eval_rJ(p);
   r_ = std::move(r);
   J_ = std::move(J);
-  // Return φ = ½‖r‖², g = Jᵀr, B = JᵀJ (Gauss-Newton Hessian approx., N&W §10.2).
+  // Return φ = ½‖r‖², g = Jᵀr, B = JᵀJ (Gauss-Newton Hessian approx., N&W
+  // §10.2).
   return {value_type{0.5} * r_.squaredNorm(), J_.transpose() * r_,
           J_.transpose() * J_};
 }
@@ -279,16 +285,16 @@ NLSTrustRegionBase<Derived, RExprs...>::eval_trial(const ParamVec &p_new) {
   auto [r, J] = eval_rJ(p_new);
   r_new_ = std::move(r);
   J_new_ = std::move(J);
-  return value_type{0.5} * r_new_.squaredNorm();  // φ_new = ½‖r_new‖²
+  return value_type{0.5} * r_new_.squaredNorm(); // φ_new = ½‖r_new‖²
 }
 
 template <typename Derived, diff::CExpression... RExprs>
 constexpr void NLSTrustRegionBase<Derived, RExprs...>::adjust_tr(
     value_type &delta, value_type rho, bool at_boundary) {
   if (rho < Base::TR_DOWN_THRESHOLD) {
-    delta *= Base::TR_DOWN_FACTOR;         // ρ < ¼: poor agreement — shrink Δ
+    delta *= Base::TR_DOWN_FACTOR; // ρ < ¼: poor agreement — shrink Δ
   } else if (rho > Base::TR_UP_THRESHOLD && at_boundary) {
-    delta *= Base::TR_UP_FACTOR;           // ρ > ¾ and step hit boundary — expand Δ
+    delta *= Base::TR_UP_FACTOR; // ρ > ¾ and step hit boundary — expand Δ
   }
   // ¼ ≤ ρ ≤ ¾: acceptable agreement — keep Δ unchanged.
 }

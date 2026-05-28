@@ -115,7 +115,8 @@ template <diff::Numeric T, int N, QNUpdate Update> struct QNDirState {
    * @brief Updates the inverse-Hessian approximation given a step (dx, dg).
    *
    * BFGS — rank-2, preserves SPD when sTy > 0.
-   *         Skips when sTy ≤ 0 or the step is below machine-epsilon scale.
+   *         Skips when sTy ≤ 0 or |(sTy)|² ≤ ε·‖s‖²·‖y‖² (curvature too
+   *         weak relative to ‖s‖·‖y‖ to update H reliably).
    * DFP  — rank-2 dual of BFGS: H ← H + ss^T/(s·y) − Hyy^TH/(y^THy).
    *         Skips when sTy ≤ 0 or yTHy ≤ EPS·‖y‖².
    * SR1  — rank-1 symmetric: H ← H + (s−Hy)(s−Hy)^T / (s−Hy)·y.
@@ -425,9 +426,10 @@ using DDFP = DFP<Expr, Dbrent>; ///< DFP  + derivative-based Brent line search
  * objective is assembled at runtime (e.g. the augmented Lagrangian @f$
  * \mathcal{L}(\mathbf{x};\lambda,\mu,\rho) @f$).
  *
- * The line search is always Armijo backtracking (halving) since no 1D bracketing
- * is available without a typed expression.  The inverse-Hessian update formula
- * is selected via @p Update (default BFGS); existing call sites that pass only
+ * The line search is always Armijo backtracking (halving) since no 1D
+ * bracketing is available without a typed expression.  The inverse-Hessian
+ * update formula is selected via @p Update (default BFGS); existing call sites
+ * that pass only
  * @c T and @c N are unaffected by the defaulted parameter.
  *
  * **Convergence criterion**: scaled @f$ \ell^\infty @f$-norm of the gradient
@@ -445,7 +447,8 @@ using DDFP = DFP<Expr, Dbrent>; ///< DFP  + derivative-based Brent line search
  *
  * @tparam T        Numeric scalar type.
  * @tparam N        Dimension of the search space (compile-time).
- * @tparam EvalGrad Callable: @c Point → @c std::pair<T,Point> (value, gradient).
+ * @tparam EvalGrad Callable: @c Point → @c std::pair<T,Point> (value,
+ * gradient).
  * @tparam Update   Inverse-Hessian update formula (default: QNUpdate::BFGS).
  * @param eval_grad Evaluation functor.
  * @param x         Initial point.
@@ -464,10 +467,10 @@ bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
   constexpr T C1{1e-4};
 
   // ── Line search: Armijo backtracking ───────────────────────────────────────
-  // Start at α = 1 (full quasi-Newton step) and halve until sufficient decrease.
-  // The condition is f(x + α·d) ≤ f(x) + c₁·α·slope  where slope = ∇f·d < 0.
-  // At most 40 halvings before giving up (α would be ≈ 10⁻¹²); the EPS guard
-  // terminates early if α drops below machine epsilon.
+  // Start at α = 1 (full quasi-Newton step) and halve until sufficient
+  // decrease. The condition is f(x + α·d) ≤ f(x) + c₁·α·slope  where slope =
+  // ∇f·d < 0. At most 40 halvings before giving up (α would be ≈ 10⁻¹²); the
+  // EPS guard terminates early if α drops below machine epsilon.
   auto line_search_fn = [&](const Point &xc, const Point &xi, T fp, T slope) {
     T alpha{1};
     for (int k = 0; k < 40 && alpha > EPS; ++k, alpha *= T{0.5}) {
@@ -487,9 +490,9 @@ bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
     // ── Step 1: scaled gradient convergence check (N&W §3.3) ────────────────
     // Weight each |∇ᵢf| by max(|xᵢ|, 1) to make the tolerance scale-invariant.
     // Divide by max(|f|, 1) for the same reason on the function value.
-    const T den        = max(abs(fp), T{1});
-    const T scaled_inf = (g.cwiseAbs().array() *
-                          x.cwiseAbs().cwiseMax(T{1}).array()).maxCoeff();
+    const T den = max(abs(fp), T{1});
+    const T scaled_inf =
+        (g.cwiseAbs().array() * x.cwiseAbs().cwiseMax(T{1}).array()).maxCoeff();
     if (scaled_inf / den < ftol) {
       break;
     }
@@ -498,8 +501,8 @@ bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
     // If d is not a descent direction (g·d ≥ 0, which can happen when H has
     // lost positive-definiteness), reset H = I and fall back to steepest
     // descent −g for this step only.  The next update will begin rebuilding H.
-    Point xi          = ds.compute(g);
-    const T slope     = g.dot(xi);
+    Point xi = ds.compute(g);
+    const T slope = g.dot(xi);
     if (slope >= T{}) {
       ds.reset();
       xi = -g;
@@ -517,7 +520,8 @@ bfgs_armijo(EvalGrad eval_grad, Eigen::Vector<T, N> x, T ftol, int itmax) {
     // ── Step 5: update inverse-Hessian approximation H ───────────────────────
     // Feed (s, y) = (dx, Δg) to QNDirState; the update formula (BFGS/DFP/SR1)
     // is selected at compile time.  Numerical safeguards inside QNDirState skip
-    // the update when the curvature condition or denominator bounds are violated.
+    // the update when the curvature condition or denominator bounds are
+    // violated.
     ds.update(dx, g_new - g);
     g = std::move(g_new);
   }
