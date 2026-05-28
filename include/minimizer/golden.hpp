@@ -50,7 +50,6 @@ public:
 template <diff::CExpression Expr>
 constexpr typename Golden<Expr>::value_type Golden<Expr>::minimize() {
   using std::abs;
-
   value_type x0 = ax, x3 = cx, x1{}, x2{};
   if (abs(cx - bx) > abs(bx - ax)) {
     x1 = bx;
@@ -58,19 +57,19 @@ constexpr typename Golden<Expr>::value_type Golden<Expr>::minimize() {
   } else {
     x2 = bx;
     x1 = bx - C * (bx - ax);
-  }
+  } // x0–x1 is now the smaller sub-interval
 
-  auto f1 = eval_at(x1);
-  auto f2 = eval_at(x2);
+  auto f1 = eval_at(x1); // bracket endpoints ax, cx already have known f-values
+  auto f2 = eval_at(x2); // from bracket(); only interior trial points are evaluated here
 
   while (abs(x3 - x0) > tol * (abs(x1) + abs(x2))) {
-    if (f2 < f1) {
+    if (f2 < f1) { // minimum in [x1, x3]: discard x0, shift left boundary right
       x0 = x1;
       x1 = x2;
       x2 = R * x2 + C * x3;
       f1 = f2;
       f2 = eval_at(x2);
-    } else {
+    } else { // minimum in [x0, x2]: discard x3, shift right boundary left
       x3 = x2;
       x2 = x1;
       x1 = R * x1 + C * x0;
@@ -78,7 +77,6 @@ constexpr typename Golden<Expr>::value_type Golden<Expr>::minimize() {
       f1 = eval_at(x1);
     }
   }
-
   if (f1 < f2) {
     xmin = x1;
     fmin = f1;

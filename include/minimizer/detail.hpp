@@ -31,11 +31,17 @@ constexpr void bracket(F &f, T &ax, T &bx, T &cx, T &fa, T &fb, T &fc) {
   constexpr T GLIMIT{100};
   constexpr T TINY{1.0e-20};
 
+  auto reset = [&f, &GOLD](double &u, double &fu, const double cx,
+                           const double bx) {
+    u = cx + GOLD * (cx - bx);
+    fu = f(u);
+  };
+
   if (fb > fa) {
     swap(ax, bx);
     swap(fa, fb);
-  }
-  cx = bx + GOLD * (bx - ax);
+  } // swap so A -> B is downhill
+  cx = bx + GOLD * (bx - ax); // first guess
   fc = f(cx);
 
   while (fb > fc) {
@@ -46,41 +52,39 @@ constexpr void bracket(F &f, T &ax, T &bx, T &cx, T &fa, T &fb, T &fc) {
         T{2} * (qdiff >= T{} ? T{1} : T{-1}) * max(abs(qdiff), TINY);
     T u = bx - ((bx - cx) * q - (bx - ax) * r) / denom;
     T ulim = bx + GLIMIT * (cx - bx);
-    T fu;
+    T fu = f(u);
 
-    if ((bx - u) * (u - cx) > T{}) {
+    if ((bx - u) * (u - cx) > T{}) { // parabolic u in [b,c]
       fu = f(u);
-      if (fu < fc) {
+      if (fu < fc) { // minimum between [b,c]
         ax = bx;
         fa = fb;
         bx = u;
         fb = fu;
         return;
       }
-      if (fu > fb) {
+      if (fu > fb) { // minimum between [a,u]
         cx = u;
         fc = fu;
         return;
       }
-      u = cx + GOLD * (cx - bx);
-      fu = f(u);
-    } else if ((cx - u) * (u - ulim) > T{}) {
+      reset(u, fu, cx, bx);
+    } else if ((cx - u) * (u - ulim) > T{}) { // parabolic between c and limit
       fu = f(u);
       if (fu < fc) {
         bx = cx;
         fb = fc;
         cx = u;
         fc = fu;
-        u = cx + GOLD * (cx - bx);
-        fu = f(u);
+        reset(u, fu, cx, bx);
       }
-    } else if ((u - ulim) * (ulim - cx) >= T{}) {
+    } else if ((u - ulim) * (ulim - cx) >= T{}) { // parabolic between u and lim
       u = ulim;
       fu = f(u);
-    } else {
-      u = cx + GOLD * (cx - bx);
-      fu = f(u);
+    } else { // parabolic step overshot ax; take default GOLD step past cx
+      reset(u, fu, cx, bx);
     }
+    // eliminate oldest point and continue
     ax = bx;
     bx = cx;
     cx = u;
@@ -341,10 +345,10 @@ template <diff::Numeric T, int N, int M> struct LBFGSDirState {
   }
 };
 
-// ── Unified quasi-Newton loop
-// LineSearchFn: (xc, xi, fp, slope) → Point  (step dx = α·xi)
-// DirState: .compute(g)→xi,  .update(dx,dg),
-// .reset() iter_out is set to the number of iterations performed.
+// Unified quasi-Newton loop.
+// LineSearchFn: (xc, xi, fp, slope) → Point (step dx = α·xi).
+// DirState: .compute(g)→xi, .update(dx,dg), .reset().
+// iter_out is set to the iteration count on return.
 template <diff::Numeric T, int N, typename EvalGrad, typename LineSearchFn,
           typename DirState>
 constexpr Eigen::Vector<T, N>
