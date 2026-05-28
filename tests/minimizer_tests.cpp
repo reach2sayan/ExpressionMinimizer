@@ -288,6 +288,85 @@ TEST(LBFGS, Quadratic3DWithArmijo) {
   EXPECT_NEAR(lbfgs.get_optimal_value(), 0.0, kTol * kTol);
 }
 
+// ─── AmoebaRand (RandomInit=true) ───────────────────────────────────────────
+
+TEST(AmoebaRand, Bowl2D) {
+  auto f = make_bowl2d();
+  auto am = exprmin::make_amoeba_rand(f);
+  auto p = am.minimize({2.0, 0.0}, 1.0);
+  EXPECT_NEAR(p[0], 1.0, 1e-4);
+  EXPECT_NEAR(p[1], 2.0, 1e-4);
+  EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-6);
+}
+TEST(AmoebaRand, Rosenbrock) {
+  auto f = make_rosenbrock();
+  auto am = exprmin::make_amoeba_rand(f, 1e-8);
+  auto p = am.minimize({-1.0, 1.0}, 0.5);
+  EXPECT_NEAR(p[0], 1.0, 1e-3);
+  EXPECT_NEAR(p[1], 1.0, 1e-3);
+  EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-4);
+}
+TEST(AmoebaRand, Quadratic3D) {
+  auto f = make_quad3d();
+  auto am = exprmin::make_amoeba_rand(f);
+  auto p = am.minimize({3.0, 3.0, 3.0}, 1.0);
+  EXPECT_NEAR(p[0], 0.0, 1e-4);
+  EXPECT_NEAR(p[1], 0.0, 1e-4);
+  EXPECT_NEAR(p[2], 0.0, 1e-4);
+  EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-6);
+}
+
+// The RngBuffer is a persistent member: calling minimize twice on the same
+// instance must both converge (buffer state is carried over, not reset).
+TEST(AmoebaRand, RepeatedCallsConverge) {
+  auto f = make_bowl2d();
+  auto am = exprmin::make_amoeba_rand(f);
+  auto p1 = am.minimize({2.0, 0.0}, 1.0);
+  auto p2 = am.minimize({0.0, 4.0}, 1.0);
+  EXPECT_NEAR(p1[0], 1.0, 1e-4);
+  EXPECT_NEAR(p1[1], 2.0, 1e-4);
+  EXPECT_NEAR(p2[0], 1.0, 1e-4);
+  EXPECT_NEAR(p2[1], 2.0, 1e-4);
+}
+
+// make_simplex_rand must produce N mutually orthogonal displacement directions
+// (columns 1..N of the simplex minus column 0 are delta * Q, Q orthonormal).
+TEST(AmoebaRand, SimplexDirectionsOrthonormal) {
+  std::mt19937 rng{42};
+  exprmin::detail::RngBuffer<double> buf{rng};
+
+  using Point = Eigen::Vector3d;
+  const Point centre{1.0, 2.0, 3.0};
+  constexpr double delta = 2.0;
+  auto s = exprmin::detail::make_simplex_rand<double, 3>(centre, delta, buf);
+
+  // Columns 1,2,3 minus column 0 should be delta * orthonormal vectors.
+  Eigen::Matrix3d D;
+  for (int i = 0; i < 3; ++i)
+    D.col(i) = (s.col(i + 1) - s.col(0)) / delta;
+
+  // D^T D should be close to identity (orthonormality).
+  const Eigen::Matrix3d gram = D.transpose() * D;
+  EXPECT_NEAR(gram(0, 0), 1.0, 1e-12);
+  EXPECT_NEAR(gram(1, 1), 1.0, 1e-12);
+  EXPECT_NEAR(gram(2, 2), 1.0, 1e-12);
+  EXPECT_NEAR(gram(0, 1), 0.0, 1e-12);
+  EXPECT_NEAR(gram(0, 2), 0.0, 1e-12);
+  EXPECT_NEAR(gram(1, 2), 0.0, 1e-12);
+}
+
+// RngBuffer should produce zero-mean normal variates over a large sample.
+TEST(RngBuffer, ApproximatelyZeroMean) {
+  exprmin::detail::RngBuffer<double> buf{std::mt19937{0}};
+  constexpr int N = 100'000;
+  double sum = 0.0;
+  for (int i = 0; i < N; ++i)
+    sum += buf();
+  EXPECT_NEAR(sum / N, 0.0, 0.01);
+}
+
+// ─── Amoeba (axis-aligned) ───────────────────────────────────────────────────
+
 TEST(Amoeba, Bowl2D) {
   auto f = make_bowl2d();
   exprmin::Amoeba am{f};
