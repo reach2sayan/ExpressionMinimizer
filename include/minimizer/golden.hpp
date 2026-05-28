@@ -5,11 +5,19 @@
 
 namespace exprmin {
 
-// NR §10.2 — Golden section search built on Bracketmethod.
-//
-// Each iteration reduces the bracket by the golden factor 0.61803.
-// Convergence is linear; tol should not be smaller than sqrt(machine epsilon)
-// (~3e-8 for double). The minimum abscissa is in xmin, function value in fmin.
+/**
+ * @brief NR §10.2 — Golden-section 1-D minimizer.
+ *
+ * Inherits from Bracketmethod to obtain a valid bracket [ax, bx, cx], then
+ * narrows it by the golden ratio (≈ 0.61803) each iteration until the
+ * interval width falls below @c tol × (|x1| + |x2|).  Convergence is linear;
+ * @c tol should not be set smaller than √ε ≈ 3 × 10⁻⁸ for @c double.
+ *
+ * Results are accessible via get_optimal_x() and get_optimal_value() after
+ * minimize() returns.
+ *
+ * @tparam Expr  A type satisfying the diff::CExpression concept.
+ */
 template <diff::CExpression Expr> struct Golden : Bracketmethod<Expr> {
   using Base = Bracketmethod<Expr>;
   using value_type = typename Base::value_type;
@@ -34,13 +42,34 @@ private:
   const value_type tol;
 
 public:
+  /// @brief Returns f(xmin) after the last minimize() call.
   constexpr value_type get_optimal_value() const { return fmin; }
+
+  /// @brief Returns the minimizer abscissa after the last minimize() call.
   constexpr value_type get_optimal_x() const { return xmin; }
+
+  /**
+   * @brief Constructs a Golden searcher wrapping the given expression.
+   * @param e     Expression to minimize.
+   * @param tol_  Convergence tolerance (default √ε ≈ 3 × 10⁻⁸).
+   */
   constexpr explicit Golden(Expr e,
                             value_type tol_ = static_cast<value_type>(3.0e-8))
       : Base(std::move(e)), tol(tol_) {}
 
+  /**
+   * @brief Runs golden-section search on the current bracket [ax, cx].
+   * @pre   bracket() must have been called (or use the two-argument overload).
+   * @return Minimizer abscissa xmin.
+   */
   constexpr value_type minimize();
+
+  /**
+   * @brief Brackets [ax0, bx0] first, then runs golden-section search.
+   * @param ax0  Left initial guess.
+   * @param bx0  Right initial guess.
+   * @return Minimizer abscissa xmin.
+   */
   constexpr value_type minimize(const value_type &ax0, const value_type &bx0) {
     bracket(ax0, bx0);
     return minimize();

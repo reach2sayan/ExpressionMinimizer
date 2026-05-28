@@ -165,6 +165,26 @@ if (OpenMP_CXX_FOUND)
 endif ()
 set_target_properties(minimizer PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
 
+option(BUILD_DOCS "Build Doxygen API documentation" OFF)
+if (BUILD_DOCS)
+    find_package(Doxygen REQUIRED)
+    set(DOXYGEN_PROJECT_NAME "ExpressionMinimizer")
+    set(DOXYGEN_PROJECT_BRIEF "Header-only C++23 expression minimization library")
+    set(DOXYGEN_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/docs")
+    set(DOXYGEN_GENERATE_HTML YES)
+    set(DOXYGEN_GENERATE_LATEX NO)
+    set(DOXYGEN_EXTRACT_ALL YES)
+    set(DOXYGEN_RECURSIVE YES)
+    set(DOXYGEN_QUIET YES)
+    set(DOXYGEN_JAVADOC_AUTOBRIEF YES)
+    set(DOXYGEN_WARN_IF_UNDOCUMENTED NO)
+    doxygen_add_docs(docs
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            COMMENT "Generating API documentation with Doxygen"
+    )
+    message(STATUS "Doxygen: docs target enabled (output: ${CMAKE_CURRENT_BINARY_DIR}/docs)")
+endif ()
+
 if (BUILD_TESTING)
     FetchContent_Declare(googletest
             URL https://github.com/google/googletest/archive/5376968f6948923e2411081fd9372e71a59d8e77.zip
