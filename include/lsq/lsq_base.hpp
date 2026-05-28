@@ -27,12 +27,27 @@ template <typename AllSyms, typename SubSyms> consteval auto sub_indices() {
 
 } // namespace detail
 
-// Base for nonlinear least-squares solvers (LevenbergMarquardt, GaussNewton).
-//
-// Owns the expression, provides shared types (DataPoint, ParamVec, …),
-// and the two hot helpers — make_all_vec and eval_rJ — that both solvers use.
-//
-// Subclasses add their own convergence parameters and fit() method.
+/**
+ * @brief CRTP base for nonlinear least-squares solvers.
+ *
+ * Owns the expression and provides:
+ * - Compile-time index maps between parameter/input symbols and the full
+ *   symbol list (PARAM_IDX, INPUT_IDX).
+ * - The DataPoint aggregate for observed data.
+ * - make_all_vec — merges a ParamVec + InputVec into the AllSyms-sized
+ *   vector the expression update() expects.
+ * - eval_rJ — evaluates the residual vector r and Jacobian J over a dataset
+ *   using reverse-mode AD for the partial derivatives.
+ *
+ * Derived classes (LevenbergMarquardt, GaussNewton) add convergence parameters
+ * and a fit() method; they do not override any of the above helpers.
+ *
+ * @tparam Expr      A type satisfying diff::CExpression.
+ * @tparam ParamSyms Compile-time list of parameter symbol chars
+ *                   (default: all symbols in Expr).
+ * @tparam InputSyms Compile-time list of per-data-point input symbol chars
+ *                   (default: empty — pure parameter fitting).
+ */
 template <diff::CExpression Expr,
           typename ParamSyms = diff::extract_symbols_from_expr_t<Expr>,
           typename InputSyms = mp::mp_list<>>
@@ -51,20 +66,36 @@ struct LeastSquaresBase {
   static constexpr auto PARAM_IDX = detail::sub_indices<AllSyms, ParamSyms>();
   static constexpr auto INPUT_IDX = detail::sub_indices<AllSyms, InputSyms>();
 
+  /// @brief One observed data point: input predictor, target response, weight
+  /// 1/σᵢ.
   struct DataPoint {
     InputVec input;
     value_type target;
-    value_type weight{1}; // 1/σᵢ — default: unweighted
+    value_type weight{1}; ///< Inverse noise scale 1/σᵢ (default: unweighted).
   };
 
 protected:
   Expr expr;
+
+  /// @brief Constructs the base, taking ownership of the expression.
   constexpr explicit LeastSquaresBase(Expr e) : expr(std::move(e)) {}
-  // Build an AllSyms-sized vector from params and a per-point input.
+
+  /**
+   * @brief Merges @p params and @p input into an AllSyms-sized vector for
+   *        expression update().
+   */
   constexpr AllVec make_all_vec(const ParamVec &params,
                                 const InputVec &input) const;
-  // Evaluate residual r and Jacobian J at params over all data points.
-  //   r[i] = wᵢ (yᵢ − f(xᵢ; a)),   J[i,j] = −wᵢ ∂f/∂aⱼ
+
+  /**
+   * @brief Evaluates the residual vector r and Jacobian J over @p data.
+   *
+   * Sign convention:
+   * @code
+   *   r[i] = wᵢ (yᵢ − f(xᵢ; a)),   J[i,j] = −wᵢ ∂f/∂aⱼ
+   * @endcode
+   * so the normal equations @c JᵀJ δa = −Jᵀr recover the standard NLS form.
+   */
   constexpr auto eval_rJ(const ParamVec &params,
                          const std::vector<DataPoint> &data);
 };

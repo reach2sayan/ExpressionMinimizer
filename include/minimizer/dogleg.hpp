@@ -9,6 +9,15 @@ namespace exprmin {
 
 namespace mp = boost::mp11;
 
+/**
+ * @brief Selects how the Hessian approximation B is maintained by Dogleg.
+ *
+ * - @c BFGS    — rank-2 symmetric update applied directly to B (eq. 6.17).
+ *               Cheaper per iteration; accurate only asymptotically near the
+ *               solution.
+ * - @c ExactAD — exact Hessian ∇²f(xₖ) recomputed every iteration via
+ *               diff::derivative_tensor<2>.  More expensive but exact.
+ */
 enum class HessianMode { BFGS, ExactAD };
 
 /**
@@ -56,18 +65,32 @@ struct Dogleg
   using Base::get_optimal_value;
   using Base::iter;
 
+  /// @brief Callable interface delegating to eval_at.
   constexpr value_type operator()(const Point &p) { return eval_at(p); }
+  /// @brief Evaluates f(p).
   constexpr value_type eval_at(const Point &p) {
     expr.update(Syms{}, p);
     return expr.eval();
   }
 
+  /**
+   * @brief Evaluates the expression and its reverse-mode gradient at @p p.
+   * @return {f(p), ∇f(p)}.
+   */
   constexpr std::pair<value_type, Point> eval_grad(const Point &p) {
     expr.update(Syms{}, p);
     const auto g_arr = diff::gradient<diff::DiffMode::Reverse>(expr);
     return {expr.eval(), Eigen::Map<const Point>(g_arr.data())};
   }
 
+  /**
+   * @brief Constructs a Dogleg minimizer wrapping the given expression.
+   * @param e                 Expression to minimize.
+   * @param tol_              Scaled-gradient convergence tolerance (default 10⁻⁸).
+   * @param itmax_            Maximum trust-region iterations (default 200).
+   * @param trustregion0_     Initial trust-region radius (default 10³).
+   * @param trustregion_min_  Minimum allowed radius before giving up (default 10⁻¹²).
+   */
   constexpr explicit Dogleg(Expr e, value_type tol_ = value_type{1e-8},
                             int itmax_ = 200,
                             value_type trustregion0_ = value_type{1e3},
@@ -75,13 +98,18 @@ struct Dogleg
       : Base{tol_, itmax_, trustregion0_, trustregion_min_},
         expr{std::move(e)} {}
 
-  // B₀ = I so the first dogleg step is a scaled Cauchy step; BFGS or
-  // ExactAD will populate B after the first successful commit/refresh.
+  /**
+   * @brief Computes initial {f, g, B} state at @p p for TrustRegionBase.
+   *
+   * B₀ = I so the first dogleg step is a scaled Cauchy step; BFGS or ExactAD
+   * will populate B after the first successful commit/refresh.
+   */
   constexpr std::tuple<value_type, Point, Matrix> eval_state(const Point &p) {
     auto [f, g] = eval_grad(p);
     return {f, g, Matrix::Identity()};
   }
 
+  /// @brief Evaluates f at the trial point @p p_new; caches its gradient for commit_state.
   constexpr value_type eval_trial(const Point &p_new) {
     auto [f, g] = eval_grad(p_new);
     g_new_ = std::move(g);

@@ -82,12 +82,16 @@ public:
    * @param dir  Search direction (in/out, scaled by t_min on exit).
    */
   constexpr void minimize(Point &p, Eigen::Ref<Point> dir) {
+    // Step 1: lift the N-D function to a 1-D scalar along the ray p + t·dir.
     auto f1d = [&](value_type t) -> value_type {
       return ls.eval_at(Point{p + t * dir});
     };
+    // Step 2: bracket on [0, 1] and refine with Brent to find t_min.
     const value_type t_min = ls.minimize_fn(f1d, value_type{0}, value_type{1});
+    // Step 3: scale dir by t_min (NR convention) and advance p.
     dir *= t_min;
     p += dir;
+    // Step 4: record f at the new point.
     fret = eval_at(p);
   }
 };
@@ -164,8 +168,11 @@ public:
    * @param dir  Search direction (in/out, scaled by t_min on exit).
    */
   constexpr void minimize(Point &p, Eigen::Ref<Point> dir) {
+    // Step 1: snapshot base point and direction so the 1-D functor captures
+    //         fixed p0/d0 while p and dir are mutated below.
     const Point p0 = p;
     const Point d0 = dir;
+    // Step 2: build a local functor exposing f(t) and df/dt = ∇f·d0 for Dbrent.
     struct FC {
       DLinMin &self;
       const Point &p0_, &d0_;
@@ -179,9 +186,12 @@ public:
         return Eigen::Map<const Point>(g.data()).dot(d0_);
       }
     } fc{*this, p0, d0};
+    // Step 3: bracket on [0, 1] and refine with Dbrent (uses both f and df).
     const value_type t_min = ls.minimize_fn(fc, value_type{0}, value_type{1});
+    // Step 4: scale dir by t_min (NR convention) and advance p.
     dir *= t_min;
     p += dir;
+    // Step 5: record f at the new point.
     fret = eval_at(p);
   }
 };

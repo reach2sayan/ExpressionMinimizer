@@ -8,9 +8,9 @@ namespace exprmin {
  * @brief Gauss-Newton nonlinear least-squares fitter (Nocedal & Wright §10.2;
  *        Dennis & Schnabel §10.1).
  *
- * Minimises @f$ \chi^2 = \tfrac{1}{2}\sum_i [w_i(y_i - f(x_i;\mathbf{a}))]^2 @f$
- * over the parameter vector @f$ \mathbf{a} \in \mathbb{R}^N @f$ by iterating the
- * *undamped* normal equations
+ * Minimises @f$ \chi^2 = \tfrac{1}{2}\sum_i [w_i(y_i - f(x_i;\mathbf{a}))]^2
+ * @f$ over the parameter vector @f$ \mathbf{a} \in \mathbb{R}^N @f$ by
+ * iterating the *undamped* normal equations
  *
  * @f[
  *   J^\top J \,\delta\mathbf{a} = -J^\top \mathbf{r},
@@ -86,13 +86,15 @@ GaussNewton<Expr, ParamSyms, InputSyms>::fit(
     const NVec step =
         (J.transpose() * J)
             .ldlt()
-            .solve(-(J.transpose() * r)); // minus: sign absorbed from J convention
+            .solve(
+                -(J.transpose() * r)); // minus: sign absorbed from J convention
 
     // Step 3: accept step unconditionally (no damping — pure Gauss-Newton).
     params += step;
 
     // Step 4: relative step-norm stopping rule (Dennis & Schnabel §8.2.8).
-    // Stops when the step is negligible relative to the current parameter scale.
+    // Stops when the step is negligible relative to the current parameter
+    // scale.
     if (step.norm() < ftol * (params.norm() + ftol)) {
       break;
     }

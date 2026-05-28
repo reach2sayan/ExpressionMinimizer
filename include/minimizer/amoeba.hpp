@@ -201,7 +201,8 @@ constexpr typename Amoeba<Expr>::Point Amoeba<Expr>::minimize(Simplex s) {
     const std::size_t inhi = *std::ranges::max_element(
         not_ihi, std::less{}, [&y](std::size_t i) { return y[i]; });
 
-    // Step 4: converge when the relative spread between best and worst is small.
+    // Step 4: converge when the relative spread between best and worst is
+    // small.
     if (value_type{2} * std::abs(y[ihi] - y[ilo]) /
             (std::abs(y[ihi]) + std::abs(y[ilo]) + TINY) <
         ftol) {

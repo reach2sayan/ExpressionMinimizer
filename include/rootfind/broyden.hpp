@@ -12,21 +12,29 @@ namespace exprmin {
 
 namespace mp = boost::mp11;
 
-// Broyden's rank-1 update method for finding roots of F(x) = 0.
-//
-// Port of GSL gsl_multiroot_fsolver_broyden (Broyden 1965), using exact
-// reverse-mode AD Jacobian in place of finite differences.
-//
-// Usage: Broyden<F1, F2, ..., FN> where each Fi is a diff::CExpression.
-// Pass the system as diff::Equation{f1, f2, ...} to the constructor.
-// Requires a square system: N equations in N unknowns.
-//
-// Algorithm per iteration:
-//   p    = H · f                   (Newton-like step; H ≈ −J⁻¹)
-//   t    = line-search step size   (Hebden backtracking on ‖F‖)
-//   y    = F(x+tp) − F(x)
-//   H   ← H − (H·y + t·p)(p^T·H) / (p^T·H·y)   (rank-1 Broyden update)
-//   fallback: if line search fails, refresh H = −J⁻¹ exactly (via AD)
+/**
+ * @brief NR §9.7 — Broyden's rank-1 quasi-Newton root finder for F(x) = 0.
+ *
+ * Port of GSL @c gsl_multiroot_fsolver_broyden (Broyden 1965).  Uses the exact
+ * reverse-mode AD Jacobian for the initial inverse-Jacobian H₀ = −J(x₀)⁻¹ and
+ * after any line-search failure; all subsequent H updates are rank-1 and
+ * Jacobian-free.
+ *
+ * **Usage:** @c Broyden<F1,F2,...,FN> where each @c Fi satisfies
+ * @c diff::CExpression.  Pass the system as @c diff::Equation{f1,f2,...} to
+ * the constructor.  Requires a square system: N equations in N unknowns.
+ *
+ * **Algorithm per iteration:**
+ * @code
+ *   p  = H · f               (Newton-like step; H ≈ −J⁻¹)
+ *   t  = Hebden backtracking step-size (shrinks while ‖F(x+tp)‖ > ‖F(x)‖)
+ *   y  = F(x+tp) − F(x)
+ *   H ← H − (H·y + t·p)(p^T·H) / (p^T·H·y)   (rank-1 Broyden update)
+ *   fallback: if line search fails, refresh H = −J(x)⁻¹ exactly via AD
+ * @endcode
+ *
+ * @tparam FExprs  Pack of expression types, each satisfying diff::CExpression.
+ */
 template <diff::CExpression... FExprs> struct Broyden {
   using System = diff::Equation<FExprs...>;
   static_assert(System::input_dim == System::output_dim,
@@ -79,12 +87,26 @@ private:
   }
 
 public:
+  /// @brief Returns ‖F(x)‖ at the last accepted iterate.
   constexpr value_type residual_norm() const { return last_phi; }
+
+  /**
+   * @brief Constructs a Broyden solver wrapping the given equation system.
+   * @param sys    Equation system (N expressions in N unknowns).
+   * @param tol_   Convergence tolerance on ‖F(x)‖ (default 1×10⁻¹⁰).
+   * @param itmax_ Maximum number of iterations (default 200).
+   */
   constexpr explicit Broyden(diff::Equation<FExprs...> sys,
                              value_type tol_ = value_type{1e-10},
                              int itmax_ = 200)
       : system{std::move(sys)}, tol{tol_}, itmax{itmax_} {}
 
+  /**
+   * @brief Finds a root of F starting from initial guess @p p.
+   * @param p  Initial guess (passed by value; used as the running iterate).
+   * @return   Approximate root x* with ‖F(x*)‖ < tol, or the best point
+   *           found after itmax iterations.
+   */
   constexpr Point find_root(Point p);
 
 private:
@@ -97,17 +119,19 @@ Broyden<FExprs...>::find_root(Point p) {
   using std::sqrt, std::abs;
   constexpr value_type EPS = std::numeric_limits<value_type>::epsilon();
 
+  // Step 1: evaluate F and build the initial exact inverse-Jacobian H = −J⁻¹.
   Point f = eval_f(p);
   Matrix H = make_H(p);
   value_type phi = f.norm();
 
   for (iter = 0; iter < itmax; ++iter) {
     last_phi = phi;
+    // Step 2: converge when ‖F(x)‖ is within tolerance.
     if (phi < tol) {
       break;
     }
 
-    // Newton-like step: p_step = H · f
+    // Step 3: compute the Newton-like step p_step = H · F(x).
     Point p_step = H * f;
 
     const value_type phi0 = phi;
@@ -115,7 +139,7 @@ Broyden<FExprs...>::find_root(Point p) {
     Point f_new;
     value_type phi1{};
 
-    // Hebden backtracking: shrink t while ‖F(x+t·p)‖ > ‖F(x)‖
+    // Step 4: Hebden backtracking — shrink t until ‖F(x+t·p)‖ ≤ ‖F(x)‖.
     for (int ls = 0; ls < LS_ITMAX; ++ls) {
       f_new = eval_f(p + t * p_step);
       phi1 = f_new.norm();
@@ -127,7 +151,7 @@ Broyden<FExprs...>::find_root(Point p) {
            (value_type{3} * theta);
     }
 
-    // Fallback: refresh exact Jacobian and recompute step
+    // Step 5: if line search still fails, refresh H exactly from AD and retry.
     if (phi1 > phi0) {
       H = make_H(p);
       p_step = H * f;
@@ -136,11 +160,9 @@ Broyden<FExprs...>::find_root(Point p) {
       phi1 = f_new.norm();
     }
 
-    // Rank-1 Broyden update:
-    //   v  = H·y  (then augmented to H·y + t·p)
-    //   w  = H^T·p
-    //   λ  = p · (H·y)
-    //   H ← H − v·w^T / λ
+    // Step 6: rank-1 Broyden update of H:
+    //   y  = F(x+tp) − F(x),  v = H·y,  w = H^T·p,  λ = p·v
+    //   H ← H − (v + t·p)·w^T / λ
     const Point y = f_new - f;
     Point v = H * y;
     const value_type lambda = p_step.dot(v);
@@ -150,6 +172,7 @@ Broyden<FExprs...>::find_root(Point p) {
       H -= (v * w.transpose()) / lambda;
     }
 
+    // Step 7: advance iterate.
     p += t * p_step;
     f = f_new;
     phi = phi1;
