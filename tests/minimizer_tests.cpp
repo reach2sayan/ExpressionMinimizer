@@ -760,6 +760,177 @@ TEST(SimplexLP, Unbounded) {
   EXPECT_EQ(lp.status, LP::Status::Unbounded);
 }
 
+// ─── GSL multimin/test.c benchmark functions ─────────────────────────────────
+// Roth: f = (-13+u+((5-v)v-2)v)² + (-29+u+((v+1)v-14)v)²
+// init (4.5, 3.5), min at (5, 4), f=0
+inline auto make_roth() {
+  auto u = PV(0.0, 'u');
+  auto v = PV(0.0, 'v');
+  auto a = -13.0 + u + ((5.0 - v) * v - 2.0) * v;
+  auto b = -29.0 + u + ((v + 1.0) * v - 14.0) * v;
+  return a * a + b * b;
+}
+
+// Wood: 100(a²-b)²+(1-a)²+90(c²-d)²+(1-c)²+10.1((1-b)²+(1-d)²)+19.8(1-b)(1-d)
+// init (-3,-1,-3,-1), min at (1,1,1,1), f=0
+inline auto make_wood() {
+  auto a = PV(0.0, 'a');
+  auto b = PV(0.0, 'b');
+  auto c = PV(0.0, 'c');
+  auto d = PV(0.0, 'd');
+  auto t1 = a * a - b;
+  auto t2 = c * c - d;
+  return 100.0 * t1 * t1 + (1.0 - a) * (1.0 - a)
+       + 90.0 * t2 * t2 + (1.0 - c) * (1.0 - c)
+       + 10.1 * ((1.0 - b) * (1.0 - b) + (1.0 - d) * (1.0 - d))
+       + 19.8 * (1.0 - b) * (1.0 - d);
+}
+
+// GSL Rosenbrock variant: (u-1)²+10(u²-v)²  (coefficient 10, not 100)
+// init (-1.2, 1.0), min at (1, 1), f=0
+inline auto make_gsl_rosenbrock() {
+  auto u = PV(0.0, 'u');
+  auto v = PV(0.0, 'v');
+  auto da = u - 1.0;
+  auto db = u * u - v;
+  return da * da + 10.0 * db * db;
+}
+
+// SimpleAbs: |u-1|+|v-2|, non-smooth, min at (1,2), f=0
+inline auto make_simpleabs() {
+  auto u = PV(0.0, 'u');
+  auto v = PV(0.0, 'v');
+  return abs(u - 1.0) + abs(v - 2.0);
+}
+
+using RothExpr         = decltype(make_roth());
+using WoodExpr         = decltype(make_wood());
+using GSLRosenbrockExpr = decltype(make_gsl_rosenbrock());
+using SimpleAbsExpr    = decltype(make_simpleabs());
+
+// Roth — gradient-based (all fdf minimizers)
+using RothGradTypes = testing::Types<
+    exprmin::Powell<RothExpr>, exprmin::Frprmn<RothExpr>,
+    exprmin::BFGS<RothExpr>,   exprmin::DFrprmn<RothExpr>,
+    exprmin::DBFGS<RothExpr>,  exprmin::LBFGS<RothExpr>,
+    exprmin::DFP<RothExpr>,    exprmin::SR1<RothExpr>,
+    exprmin::Dogleg<RothExpr>,
+    exprmin::Dogleg<RothExpr, exprmin::HessianMode::ExactAD>>;
+template <typename T> class RothGradTest : public testing::Test {};
+TYPED_TEST_SUITE(RothGradTest, RothGradTypes);
+TYPED_TEST(RothGradTest, Converges) {
+  auto f = make_roth();
+  TypeParam opt{f};
+  auto p = opt.minimize({4.5, 3.5});
+  EXPECT_NEAR(p[0], 5.0, 1e-3);
+  EXPECT_NEAR(p[1], 4.0, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-5);
+}
+
+// Roth — gradient-free (f minimizers: simplex variants)
+using RothFreeTypes = testing::Types<
+    exprmin::Amoeba<RothExpr>, exprmin::Amoeba<RothExpr, true>>;
+template <typename T> class RothFreeTest : public testing::Test {};
+TYPED_TEST_SUITE(RothFreeTest, RothFreeTypes);
+TYPED_TEST(RothFreeTest, Converges) {
+  auto f = make_roth();
+  TypeParam opt{f};
+  auto p = opt.minimize({4.5, 3.5}, 0.5);
+  EXPECT_NEAR(p[0], 5.0, 1e-3);
+  EXPECT_NEAR(p[1], 4.0, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-5);
+}
+
+// Wood — gradient-based
+// SR1 excluded: no positive-definiteness guarantee on this coupling-heavy function
+// Dogleg<ExactAD> excluded: cross-coupling terms make the exact 4×4 Hessian
+// ill-conditioned at the starting point; the approximated-Hessian variant works.
+using WoodGradTypes = testing::Types<
+    exprmin::Powell<WoodExpr>,  exprmin::Frprmn<WoodExpr>,
+    exprmin::BFGS<WoodExpr>,    exprmin::DFrprmn<WoodExpr>,
+    exprmin::DBFGS<WoodExpr>,   exprmin::LBFGS<WoodExpr>,
+    exprmin::DFP<WoodExpr>,
+    exprmin::Dogleg<WoodExpr>>;
+template <typename T> class WoodGradTest : public testing::Test {};
+TYPED_TEST_SUITE(WoodGradTest, WoodGradTypes);
+TYPED_TEST(WoodGradTest, Converges) {
+  auto f = make_wood();
+  TypeParam opt{f, 1e-10};
+  auto p = opt.minimize({-3.0, -1.0, -3.0, -1.0});
+  EXPECT_NEAR(p[0], 1.0, 1e-3);
+  EXPECT_NEAR(p[1], 1.0, 1e-3);
+  EXPECT_NEAR(p[2], 1.0, 1e-3);
+  EXPECT_NEAR(p[3], 1.0, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-5);
+}
+
+// Wood — gradient-free
+using WoodFreeTypes = testing::Types<
+    exprmin::Amoeba<WoodExpr>, exprmin::Amoeba<WoodExpr, true>>;
+template <typename T> class WoodFreeTest : public testing::Test {};
+TYPED_TEST_SUITE(WoodFreeTest, WoodFreeTypes);
+TYPED_TEST(WoodFreeTest, Converges) {
+  auto f = make_wood();
+  TypeParam opt{f, 1e-8};
+  auto p = opt.minimize({-3.0, -1.0, -3.0, -1.0}, 1.0);
+  EXPECT_NEAR(p[0], 1.0, 1e-3);
+  EXPECT_NEAR(p[1], 1.0, 1e-3);
+  EXPECT_NEAR(p[2], 1.0, 1e-3);
+  EXPECT_NEAR(p[3], 1.0, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-5);
+}
+
+// GSL Rosenbrock (coeff 10) — gradient-based
+using GSLRosenbrockGradTypes = testing::Types<
+    exprmin::Powell<GSLRosenbrockExpr>,   exprmin::Frprmn<GSLRosenbrockExpr>,
+    exprmin::BFGS<GSLRosenbrockExpr>,     exprmin::DFrprmn<GSLRosenbrockExpr>,
+    exprmin::DBFGS<GSLRosenbrockExpr>,    exprmin::LBFGS<GSLRosenbrockExpr>,
+    exprmin::DFP<GSLRosenbrockExpr>,      exprmin::SR1<GSLRosenbrockExpr>,
+    exprmin::Dogleg<GSLRosenbrockExpr>,
+    exprmin::Dogleg<GSLRosenbrockExpr, exprmin::HessianMode::ExactAD>>;
+template <typename T> class GSLRosenbrockGradTest : public testing::Test {};
+TYPED_TEST_SUITE(GSLRosenbrockGradTest, GSLRosenbrockGradTypes);
+TYPED_TEST(GSLRosenbrockGradTest, Converges) {
+  auto f = make_gsl_rosenbrock();
+  TypeParam opt{f, 1e-10};
+  auto p = opt.minimize({-1.2, 1.0});
+  EXPECT_NEAR(p[0], 1.0, 1e-4);
+  EXPECT_NEAR(p[1], 1.0, 1e-4);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-6);
+}
+
+// GSL Rosenbrock (coeff 10) — gradient-free
+using GSLRosenbrockFreeTypes = testing::Types<
+    exprmin::Amoeba<GSLRosenbrockExpr>, exprmin::Amoeba<GSLRosenbrockExpr, true>>;
+template <typename T> class GSLRosenbrockFreeTest : public testing::Test {};
+TYPED_TEST_SUITE(GSLRosenbrockFreeTest, GSLRosenbrockFreeTypes);
+TYPED_TEST(GSLRosenbrockFreeTest, Converges) {
+  auto f = make_gsl_rosenbrock();
+  TypeParam opt{f, 1e-8};
+  auto p = opt.minimize({-1.2, 1.0}, 0.5);
+  EXPECT_NEAR(p[0], 1.0, 1e-3);
+  EXPECT_NEAR(p[1], 1.0, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-4);
+}
+
+// SimpleAbs: non-smooth — gradient-free only (nmsimplex equivalents)
+TEST(SimpleAbs, Amoeba) {
+  auto f = make_simpleabs();
+  exprmin::Amoeba am{f};
+  auto p = am.minimize({0.0, 0.0}, 1.0);
+  EXPECT_NEAR(p[0], 1.0, 1e-3);
+  EXPECT_NEAR(p[1], 2.0, 1e-3);
+  EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-5);
+}
+TEST(SimpleAbs, AmoebaRand) {
+  auto f = make_simpleabs();
+  auto am = exprmin::make_amoeba_rand(f);
+  auto p = am.minimize({0.0, 0.0}, 1.0);
+  EXPECT_NEAR(p[0], 1.0, 1e-3);
+  EXPECT_NEAR(p[1], 2.0, 1e-3);
+  EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-5);
+}
+
 // ─── InteriorPointLP §10.11 ──────────────────────────────────────────────────
 
 // Same 2D problem in standard form: add slack s so x₁+x₂+s = 4.
