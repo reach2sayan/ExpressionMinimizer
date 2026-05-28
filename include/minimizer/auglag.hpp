@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bfgs.hpp"
 #include "detail.hpp"
 #include "equation.hpp"
 #include "expressions.hpp"
@@ -113,7 +114,7 @@ private:
 
   // BFGS with backtracking Armijo on the augmented Lagrangian.
   constexpr Point inner_minimize(Point x) {
-    return detail::bfgs_armijo<value_type, static_cast<int>(N)>(
+    return exprmin::bfgs_armijo<value_type, static_cast<int>(N)>(
         [this](const Point &p) { return eval_aug(p); }, std::move(x), ftol,
         INNER_ITMAX);
   }
