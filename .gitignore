@@ -450,3 +450,5 @@ FodyWeavers.xsd
 *.js
 
 /docs/*
+*.json
+*.png
