@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(ENABLE_NATIVE_ARCH "Build optimized for this machine" ON)
-option(ENABLE_MKL "Enable Intel MKL backend for Eigen when available" ON)
+option(ENABLE_MKL "Enable Intel MKL backend for Eigen when available" OFF)
 
 include(CheckCXXCompilerFlag)
 include(CTest)
@@ -83,34 +83,6 @@ else ()
     target_compile_definitions(eigen_backend INTERFACE EIGEN_NO_MKL)
 endif ()
 
-# OpenMP — Eigen parallelises reductions and some decompositions when _OPENMP
-# is defined (set automatically by OpenMP::OpenMP_CXX via -fopenmp).
-# Clang on Linux ships without a system libomp; set the three variables that
-# FindOpenMP needs before calling find_package so it doesn't have to probe.
-if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set(_omp_search_roots
-            /opt/rocm/lib/llvm       # ROCm symlink (version-agnostic)
-            /opt/rocm-7.0.2/lib/llvm
-            /usr/lib/llvm-18
-            /usr/lib/llvm-17
-            /usr/local)
-    foreach (_root ${_omp_search_roots})
-        if (EXISTS "${_root}/lib/libomp.so")
-            set(OpenMP_CXX_FLAGS "-fopenmp" CACHE STRING "" FORCE)
-            set(OpenMP_CXX_LIB_NAMES "omp" CACHE STRING "" FORCE)
-            set(OpenMP_omp_LIBRARY "${_root}/lib/libomp.so" CACHE FILEPATH "" FORCE)
-            set(_omp_include_dir "${_root}/include")
-            break()
-        endif ()
-    endforeach ()
-endif ()
-find_package(OpenMP)
-if (OpenMP_CXX_FOUND)
-    message(STATUS "OpenMP: ${OpenMP_CXX_VERSION} found")
-else ()
-    message(STATUS "OpenMP: not found — Eigen will run single-threaded")
-endif ()
-
 find_package(Threads REQUIRED)
 
 # ── ExpressionDifferentiator submodule ─────────────────────────────────────
@@ -150,12 +122,6 @@ target_include_directories(minimizer INTERFACE
         $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(minimizer INTERFACE diff Eigen3::Eigen eigen_backend Threads::Threads)
-if (OpenMP_CXX_FOUND)
-    target_link_libraries(minimizer INTERFACE OpenMP::OpenMP_CXX)
-    if (DEFINED _omp_include_dir AND EXISTS "${_omp_include_dir}/omp.h")
-        target_include_directories(minimizer INTERFACE "${_omp_include_dir}")
-    endif ()
-endif ()
 target_compile_features(minimizer INTERFACE cxx_std_23)
 
 option(BUILD_DOCS "Build Doxygen API documentation" OFF)
