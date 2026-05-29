@@ -112,4 +112,5 @@ plt.tight_layout()
 out = Path(data_file).with_suffix("").name + "_plot.png"
 plt.savefig(out, dpi=150, facecolor="white")
 print(f"Saved {out}")
-plt.show()
+if "--show" in sys.argv:
+    plt.show()
