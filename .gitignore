@@ -446,3 +446,7 @@ FodyWeavers.xsd
 
 /.claude/
 /build/
+/build-docs/*
+*.js
+
+/docs/*
