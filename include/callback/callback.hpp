@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -33,6 +34,10 @@ template <typename Derived> struct CallbackBase {
   constexpr void on_amoeba_iter(Args &&...) noexcept {}
   template <typename... Args>
   constexpr void on_anneal_iter(Args &&...) noexcept {}
+  // Generic position hook: called with (iter, span-of-current-iterate).
+  // Use this to capture the path for visualization.
+  template <typename... Args>
+  constexpr void on_iter_point(Args &&...) noexcept {}
 
 protected:
   constexpr Derived &self() noexcept { return static_cast<Derived &>(*this); }
@@ -91,12 +96,18 @@ struct CompositeCallbacks : CallbackBase<CompositeCallbacks<Cbs...>> {
         [&]<typename... C>(C &...cb) { (cb.on_anneal_iter(args...), ...); },
         callbacks_);
   }
+  template <typename... Args> constexpr void on_iter_point(Args &&...args) {
+    std::apply(
+        [&]<typename... C>(C &...cb) { (cb.on_iter_point(args...), ...); },
+        callbacks_);
+  }
 };
 
 // Factory: make_callbacks(cb1, cb2, ...) → CompositeCallbacks<Cb1, Cb2, ...>
 // Nested composition is allowed: make_callbacks(make_callbacks(a, b), c).
 template <CCallback... Cbs> constexpr auto make_callbacks(Cbs... cbs) {
-  return CompositeCallbacks<Cbs...>{std::tuple<Cbs...>{std::move(cbs)...}};
+  // {} initializes the empty CallbackBase<CompositeCallbacks<Cbs...>> base.
+  return CompositeCallbacks<Cbs...>{{}, std::tuple<Cbs...>{std::move(cbs)...}};
 }
 
 } // namespace exprmin::callback

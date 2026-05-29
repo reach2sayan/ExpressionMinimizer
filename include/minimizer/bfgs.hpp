@@ -278,6 +278,7 @@ protected:
       x += dx;
 
       cbs_.on_qn_iter(iter_out, fp, scaled_grad_inf_norm, dx.norm());
+      cbs_.on_iter_point(iter_out, std::span<const value_type>(x.data(), N));
 
       // Re-evaluate at the new point, feed (s, y) = (dx, Δg) to the
       // direction state so it can update its Hessian approximation.

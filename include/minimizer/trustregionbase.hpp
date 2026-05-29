@@ -47,8 +47,9 @@ template <typename Derived, typename T, int N> struct TrustRegionBase {
   int iter{};
   constexpr T get_optimal_value() const { return fret; }
 
-  // Default CRTP hook — overridden by derived classes that hold a Callbacks member.
+  // Default CRTP hooks — overridden by derived classes that hold a Callbacks member.
   constexpr void on_tr_iter(int, T, T, T, T, bool) const noexcept {}
+  constexpr void on_iter_point(int, const ParamVec &) const noexcept {}
 
   /**
    * @brief Execute the trust-region outer loop (N&W Alg. 4.1) from x₀ = @p p.
@@ -135,6 +136,7 @@ TrustRegionBase<Derived, T, N>::minimize(ParamVec p) {
       p += step;
       phi = phi_new;
       std::tie(g, B) = self().commit_state(step, g, B);
+      self().on_iter_point(iter, p);
     }
     // else: step rejected; Δ was already shrunk by adjust_tr — retry.
   }

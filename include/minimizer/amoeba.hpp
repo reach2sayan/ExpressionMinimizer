@@ -296,6 +296,7 @@ Amoeba<Expr, RandomInit, Callbacks>::minimize(Simplex s) {
         not_ihi, std::less{}, [&y](std::size_t i) { return y[i]; });
 
     cbs_.on_amoeba_iter(iter, y[ilo], y[ihi]);
+    cbs_.on_iter_point(iter, std::span<const value_type>(s.col(ilo).data(), N));
     // Step 4: converge when the relative spread between best and worst is
     // small.
     if (value_type{2} * std::abs(y[ihi] - y[ilo]) /
