@@ -14,8 +14,7 @@
 #include "frprmn.hpp"
 #include "lbfgs.hpp"
 
-#include <boost/mp11/algorithm.hpp>
-#include <boost/mp11/list.hpp>
+#include "../sym.hpp"
 
 namespace exprmin {
 
@@ -58,9 +57,9 @@ template <diff::CExpression... Rs> auto make_subspace2d(Rs... rs) {
  */
 template <char... InputChars, diff::CExpression Expr>
 auto make_lm(Expr e, typename Expr::value_type ftol = 1e-8) {
-  using AllSyms = diff::extract_symbols_from_expr_t<Expr>;
-  using InputSyms = mp::mp_list<std::integral_constant<char, InputChars>...>;
-  using ParamSyms = mp::mp_set_difference<AllSyms, InputSyms>;
+  using AllSyms = all_syms_t<Expr>;
+  using InputSyms = sym_list_t<InputChars...>;
+  using ParamSyms = param_syms_t<Expr, InputChars...>;
   return LevenbergMarquardt<Expr, ParamSyms, InputSyms>{std::move(e), ftol};
 }
 
@@ -76,9 +75,9 @@ auto make_lm(Expr e, typename Expr::value_type ftol = 1e-8) {
  */
 template <char... InputChars, diff::CExpression Expr>
 auto make_gn(Expr e, typename Expr::value_type ftol = 1e-8) {
-  using AllSyms = diff::extract_symbols_from_expr_t<Expr>;
-  using InputSyms = mp::mp_list<std::integral_constant<char, InputChars>...>;
-  using ParamSyms = mp::mp_set_difference<AllSyms, InputSyms>;
+  using AllSyms = all_syms_t<Expr>;
+  using InputSyms = sym_list_t<InputChars...>;
+  using ParamSyms = param_syms_t<Expr, InputChars...>;
   return GaussNewton<Expr, ParamSyms, InputSyms>{std::move(e), ftol};
 }
 
@@ -139,18 +138,18 @@ auto make_dogleg(Expr e, typename Expr::value_type tol = 1e-8) {
 
 template <char... InputChars, diff::CExpression Expr, callback::CCallback Cb>
 auto make_lm(Expr e, Cb cb, typename Expr::value_type ftol = 1e-8) {
-  using AllSyms = diff::extract_symbols_from_expr_t<Expr>;
-  using InputSyms = mp::mp_list<std::integral_constant<char, InputChars>...>;
-  using ParamSyms = mp::mp_set_difference<AllSyms, InputSyms>;
+  using AllSyms = all_syms_t<Expr>;
+  using InputSyms = sym_list_t<InputChars...>;
+  using ParamSyms = param_syms_t<Expr, InputChars...>;
   return LevenbergMarquardt<Expr, ParamSyms, InputSyms, Cb>{
       std::move(e), ftol, 1000, std::move(cb)};
 }
 
 template <char... InputChars, diff::CExpression Expr, callback::CCallback Cb>
 auto make_gn(Expr e, Cb cb, typename Expr::value_type ftol = 1e-8) {
-  using AllSyms = diff::extract_symbols_from_expr_t<Expr>;
-  using InputSyms = mp::mp_list<std::integral_constant<char, InputChars>...>;
-  using ParamSyms = mp::mp_set_difference<AllSyms, InputSyms>;
+  using AllSyms = all_syms_t<Expr>;
+  using InputSyms = sym_list_t<InputChars...>;
+  using ParamSyms = param_syms_t<Expr, InputChars...>;
   return GaussNewton<Expr, ParamSyms, InputSyms, Cb>{std::move(e), ftol, 1000,
                                                      std::move(cb)};
 }
