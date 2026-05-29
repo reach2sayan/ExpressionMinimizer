@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(DOXYGEN_GENERATE_LATEX YES)
+set(DOXYGEN_LATEX_CMD_NAME /usr/bin/pdflatex)
 
 option(ENABLE_NATIVE_ARCH "Build optimized for this machine" ON)
 option(ENABLE_MKL "Enable Intel MKL backend for Eigen when available" OFF)
