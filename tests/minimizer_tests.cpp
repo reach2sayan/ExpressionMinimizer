@@ -1000,6 +1000,294 @@ TEST(SimpleAbs, AmoebaRand) {
   EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-5);
 }
 
+// ─── Playground benchmark functions ──────────────────────────────────────────
+
+// Himmelblau: (x²+y-11)²+(x+y²-7)²  four equal global minima f=0
+// start (2,1) sits in basin of (3,2); test only fopt since all minima give f=0
+inline auto make_himmelblau() {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  return (x * x + y - 11.0) * (x * x + y - 11.0) +
+         (x + y * y - 7.0) * (x + y * y - 7.0);
+}
+
+// Beale: (1.5-x+xy)²+(2.25-x+xy²)²+(2.625-x+xy³)²  min f=0 at (3, 0.5)
+inline auto make_beale() {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  return (1.5 - x + x * y) * (1.5 - x + x * y) +
+         (2.25 - x + x * y * y) * (2.25 - x + x * y * y) +
+         (2.625 - x + x * y * y * y) * (2.625 - x + x * y * y * y);
+}
+
+// Booth: (x+2y-7)²+(2x+y-5)²  min f=0 at (1, 3)
+inline auto make_booth() {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  return (x + 2.0 * y - 7.0) * (x + 2.0 * y - 7.0) +
+         (2.0 * x + y - 5.0) * (2.0 * x + y - 5.0);
+}
+
+// Matyas: 0.26(x²+y²)-0.48xy  min f=0 at (0, 0)
+inline auto make_matyas() {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  return 0.26 * (x * x + y * y) - 0.48 * x * y;
+}
+
+// Six-hump camelback: two global minima f≈-1.0316 at ±(0.0898,-0.7126)
+// start (-0.5, 0.5); test fopt only since both minima are valid
+inline auto make_sixhump() {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  return (4.0 - 2.1 * x * x + x * x * x * x / 3.0) * x * x + x * y +
+         (-4.0 + 4.0 * y * y) * y * y;
+}
+
+// Goldstein-Price: min f=3 at (0, -1); four local minima
+inline auto make_goldstein_price() {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  auto A = 1.0 + (x + y + 1.0) * (x + y + 1.0) *
+                     (19.0 - 14.0 * x + 3.0 * x * x - 14.0 * y +
+                      6.0 * x * y + 3.0 * y * y);
+  auto B = 30.0 + (2.0 * x - 3.0 * y) * (2.0 * x - 3.0 * y) *
+                      (18.0 - 32.0 * x + 12.0 * x * x + 48.0 * y -
+                       36.0 * x * y + 27.0 * y * y);
+  return A * B;
+}
+
+// Rastrigin: 20+x²-10cos(2πx)+y²-10cos(2πy)  min f=0 at (0,0); many local minima
+// start (0.1, 0.1) is inside the basin of (0,0)
+inline auto make_rastrigin() {
+  auto x = PV(0.0, 'x');
+  auto y = PV(0.0, 'y');
+  constexpr double pi = std::numbers::pi;
+  return 20.0 + x * x - 10.0 * cos(2.0 * pi * x) +
+         y * y - 10.0 * cos(2.0 * pi * y);
+}
+
+using HimmelblauExpr    = decltype(make_himmelblau());
+using BealeExpr         = decltype(make_beale());
+using BoothExpr         = decltype(make_booth());
+using MatyasExpr        = decltype(make_matyas());
+using SixHumpExpr       = decltype(make_sixhump());
+using GoldsteinPriceExpr = decltype(make_goldstein_price());
+using RastriginExpr     = decltype(make_rastrigin());
+
+// ── Himmelblau ───────────────────────────────────────────────────────────────
+// SR1 excluded: no pos-def guarantee on multi-modal landscape
+using HimmelblauGradTypes = testing::Types<
+    exprmin::Powell<HimmelblauExpr>,  exprmin::Frprmn<HimmelblauExpr>,
+    exprmin::BFGS<HimmelblauExpr>,    exprmin::DFrprmn<HimmelblauExpr>,
+    exprmin::DBFGS<HimmelblauExpr>,   exprmin::LBFGS<HimmelblauExpr>,
+    exprmin::DFP<HimmelblauExpr>,
+    exprmin::Dogleg<HimmelblauExpr>,
+    exprmin::Dogleg<HimmelblauExpr, exprmin::HessianMode::ExactAD>>;
+template <typename T> class HimmelblauGradTest : public testing::Test {};
+TYPED_TEST_SUITE(HimmelblauGradTest, HimmelblauGradTypes);
+TYPED_TEST(HimmelblauGradTest, Converges) {
+  auto f = make_himmelblau();
+  TypeParam opt{f};
+  opt.minimize({2.0, 1.0});
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-6);
+}
+
+using HimmelblauFreeTypes = testing::Types<
+    exprmin::Amoeba<HimmelblauExpr>, exprmin::Amoeba<HimmelblauExpr, true>>;
+template <typename T> class HimmelblauFreeTest : public testing::Test {};
+TYPED_TEST_SUITE(HimmelblauFreeTest, HimmelblauFreeTypes);
+TYPED_TEST(HimmelblauFreeTest, Converges) {
+  auto f = make_himmelblau();
+  TypeParam opt{f};
+  opt.minimize({2.0, 1.0}, 0.5);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-5);
+}
+
+// ── Beale ────────────────────────────────────────────────────────────────────
+// SR1 excluded: cubic terms make Hessian approximation unreliable
+// Dogleg<ExactAD> excluded: y³ terms cause ill-conditioning at certain points
+using BealeGradTypes = testing::Types<
+    exprmin::Powell<BealeExpr>,  exprmin::Frprmn<BealeExpr>,
+    exprmin::BFGS<BealeExpr>,    exprmin::DFrprmn<BealeExpr>,
+    exprmin::DBFGS<BealeExpr>,   exprmin::LBFGS<BealeExpr>,
+    exprmin::DFP<BealeExpr>,
+    exprmin::Dogleg<BealeExpr>>;
+template <typename T> class BealeGradTest : public testing::Test {};
+TYPED_TEST_SUITE(BealeGradTest, BealeGradTypes);
+TYPED_TEST(BealeGradTest, Converges) {
+  auto f = make_beale();
+  TypeParam opt{f};
+  auto p = opt.minimize({1.0, 1.0});
+  EXPECT_NEAR(p[0], 3.0, 1e-3);
+  EXPECT_NEAR(p[1], 0.5, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-5);
+}
+
+using BealeFreeTypes = testing::Types<
+    exprmin::Amoeba<BealeExpr>, exprmin::Amoeba<BealeExpr, true>>;
+template <typename T> class BealeFreeTest : public testing::Test {};
+TYPED_TEST_SUITE(BealeFreeTest, BealeFreeTypes);
+TYPED_TEST(BealeFreeTest, Converges) {
+  auto f = make_beale();
+  TypeParam opt{f};
+  auto p = opt.minimize({1.0, 1.0}, 0.5);
+  EXPECT_NEAR(p[0], 3.0, 1e-3);
+  EXPECT_NEAR(p[1], 0.5, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-5);
+}
+
+// ── Booth ─────────────────────────────────────────────────────────────────────
+// Simple quadratic — all methods converge from (0,0)
+using BoothGradTypes = testing::Types<
+    exprmin::Powell<BoothExpr>,  exprmin::Frprmn<BoothExpr>,
+    exprmin::BFGS<BoothExpr>,    exprmin::DFrprmn<BoothExpr>,
+    exprmin::DBFGS<BoothExpr>,   exprmin::LBFGS<BoothExpr>,
+    exprmin::DFP<BoothExpr>,     exprmin::SR1<BoothExpr>,
+    exprmin::Dogleg<BoothExpr>,
+    exprmin::Dogleg<BoothExpr, exprmin::HessianMode::ExactAD>>;
+template <typename T> class BoothGradTest : public testing::Test {};
+TYPED_TEST_SUITE(BoothGradTest, BoothGradTypes);
+TYPED_TEST(BoothGradTest, Converges) {
+  auto f = make_booth();
+  TypeParam opt{f};
+  auto p = opt.minimize({0.0, 0.0});
+  EXPECT_NEAR(p[0], 1.0, kTol);
+  EXPECT_NEAR(p[1], 3.0, kTol);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, kTol * kTol);
+}
+
+using BoothFreeTypes = testing::Types<
+    exprmin::Amoeba<BoothExpr>, exprmin::Amoeba<BoothExpr, true>>;
+template <typename T> class BoothFreeTest : public testing::Test {};
+TYPED_TEST_SUITE(BoothFreeTest, BoothFreeTypes);
+TYPED_TEST(BoothFreeTest, Converges) {
+  auto f = make_booth();
+  TypeParam opt{f};
+  auto p = opt.minimize({0.0, 0.0}, 1.0);
+  EXPECT_NEAR(p[0], 1.0, 1e-4);
+  EXPECT_NEAR(p[1], 3.0, 1e-4);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-6);
+}
+
+// ── Matyas ────────────────────────────────────────────────────────────────────
+// Shallow elliptical bowl — all methods converge from (5,5)
+using MatyasGradTypes = testing::Types<
+    exprmin::Powell<MatyasExpr>,  exprmin::Frprmn<MatyasExpr>,
+    exprmin::BFGS<MatyasExpr>,    exprmin::DFrprmn<MatyasExpr>,
+    exprmin::DBFGS<MatyasExpr>,   exprmin::LBFGS<MatyasExpr>,
+    exprmin::DFP<MatyasExpr>,     exprmin::SR1<MatyasExpr>,
+    exprmin::Dogleg<MatyasExpr>,
+    exprmin::Dogleg<MatyasExpr, exprmin::HessianMode::ExactAD>>;
+template <typename T> class MatyasGradTest : public testing::Test {};
+TYPED_TEST_SUITE(MatyasGradTest, MatyasGradTypes);
+TYPED_TEST(MatyasGradTest, Converges) {
+  auto f = make_matyas();
+  TypeParam opt{f};
+  auto p = opt.minimize({5.0, 5.0});
+  EXPECT_NEAR(p[0], 0.0, kTol);
+  EXPECT_NEAR(p[1], 0.0, kTol);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, kTol * kTol);
+}
+
+using MatyasFreeTypes = testing::Types<
+    exprmin::Amoeba<MatyasExpr>, exprmin::Amoeba<MatyasExpr, true>>;
+template <typename T> class MatyasFreeTest : public testing::Test {};
+TYPED_TEST_SUITE(MatyasFreeTest, MatyasFreeTypes);
+TYPED_TEST(MatyasFreeTest, Converges) {
+  auto f = make_matyas();
+  TypeParam opt{f};
+  auto p = opt.minimize({5.0, 5.0}, 1.0);
+  EXPECT_NEAR(p[0], 0.0, 1e-4);
+  EXPECT_NEAR(p[1], 0.0, 1e-4);
+  EXPECT_NEAR(opt.get_optimal_value(), 0.0, 1e-6);
+}
+
+// ── Six-hump camelback ────────────────────────────────────────────────────────
+// Two global minima at f≈-1.0316; test fopt only, not position
+// SR1, Dogleg<ExactAD> excluded: negative landscape + local minima cause issues
+using SixHumpGradTypes = testing::Types<
+    exprmin::Powell<SixHumpExpr>,  exprmin::Frprmn<SixHumpExpr>,
+    exprmin::BFGS<SixHumpExpr>,    exprmin::DFrprmn<SixHumpExpr>,
+    exprmin::DBFGS<SixHumpExpr>,   exprmin::LBFGS<SixHumpExpr>,
+    exprmin::DFP<SixHumpExpr>,
+    exprmin::Dogleg<SixHumpExpr>>;
+template <typename T> class SixHumpGradTest : public testing::Test {};
+TYPED_TEST_SUITE(SixHumpGradTest, SixHumpGradTypes);
+TYPED_TEST(SixHumpGradTest, Converges) {
+  auto f = make_sixhump();
+  TypeParam opt{f};
+  opt.minimize({-0.5, 0.5});
+  EXPECT_NEAR(opt.get_optimal_value(), -1.031628, 1e-4);
+}
+
+using SixHumpFreeTypes = testing::Types<
+    exprmin::Amoeba<SixHumpExpr>, exprmin::Amoeba<SixHumpExpr, true>>;
+template <typename T> class SixHumpFreeTest : public testing::Test {};
+TYPED_TEST_SUITE(SixHumpFreeTest, SixHumpFreeTypes);
+TYPED_TEST(SixHumpFreeTest, Converges) {
+  auto f = make_sixhump();
+  TypeParam opt{f};
+  opt.minimize({-0.5, 0.5}, 0.3);
+  EXPECT_NEAR(opt.get_optimal_value(), -1.031628, 1e-4);
+}
+
+// ── Goldstein-Price ───────────────────────────────────────────────────────────
+// f=3 at (0,-1); start (0,-0.5) is in the global basin
+// Powell excluded: conjugate-direction resets fail on degree-6 landscape
+// SR1 and Dogleg<ExactAD> excluded: high-degree Hessian ill-conditioned
+using GoldsteinPriceGradTypes = testing::Types<
+    exprmin::Frprmn<GoldsteinPriceExpr>,
+    exprmin::BFGS<GoldsteinPriceExpr>,    exprmin::DFrprmn<GoldsteinPriceExpr>,
+    exprmin::DBFGS<GoldsteinPriceExpr>,   exprmin::LBFGS<GoldsteinPriceExpr>,
+    exprmin::DFP<GoldsteinPriceExpr>,
+    exprmin::Dogleg<GoldsteinPriceExpr>>;
+template <typename T> class GoldsteinPriceGradTest : public testing::Test {};
+TYPED_TEST_SUITE(GoldsteinPriceGradTest, GoldsteinPriceGradTypes);
+TYPED_TEST(GoldsteinPriceGradTest, Converges) {
+  auto f = make_goldstein_price();
+  TypeParam opt{f};
+  auto p = opt.minimize({0.0, -0.5});
+  EXPECT_NEAR(p[0], 0.0, 1e-3);
+  EXPECT_NEAR(p[1], -1.0, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 3.0, 1e-4);
+}
+
+using GoldsteinPriceFreeTypes = testing::Types<
+    exprmin::Amoeba<GoldsteinPriceExpr>,
+    exprmin::Amoeba<GoldsteinPriceExpr, true>>;
+template <typename T> class GoldsteinPriceFreeTest : public testing::Test {};
+TYPED_TEST_SUITE(GoldsteinPriceFreeTest, GoldsteinPriceFreeTypes);
+TYPED_TEST(GoldsteinPriceFreeTest, Converges) {
+  auto f = make_goldstein_price();
+  TypeParam opt{f, 1e-8};
+  auto p = opt.minimize({0.0, -0.5}, 0.3);
+  EXPECT_NEAR(p[0], 0.0, 1e-3);
+  EXPECT_NEAR(p[1], -1.0, 1e-3);
+  EXPECT_NEAR(opt.get_optimal_value(), 3.0, 1e-4);
+}
+
+// ── Rastrigin ─────────────────────────────────────────────────────────────────
+// Highly multimodal; start (0.1,0.1) is inside the basin of (0,0)
+// Only LBFGS and Amoeba are reliable enough for the test suite; other gradient
+// methods can get trapped in nearby local minima from even a small offset
+TEST(Rastrigin, LBFGS) {
+  auto f = make_rastrigin();
+  auto s = exprmin::make_lbfgs<exprmin::Brent, 10>(f);
+  auto p = s.minimize({0.1, 0.1});
+  EXPECT_NEAR(p[0], 0.0, 1e-4);
+  EXPECT_NEAR(p[1], 0.0, 1e-4);
+  EXPECT_NEAR(s.get_optimal_value(), 0.0, 1e-6);
+}
+TEST(Rastrigin, Amoeba) {
+  auto f = make_rastrigin();
+  exprmin::Amoeba am{f, 1e-8};
+  auto p = am.minimize({0.1, 0.1}, 0.05);
+  EXPECT_NEAR(p[0], 0.0, 1e-4);
+  EXPECT_NEAR(p[1], 0.0, 1e-4);
+  EXPECT_NEAR(am.get_optimal_value(), 0.0, 1e-6);
+}
+
 // ─── InteriorPointLP §10.11 ──────────────────────────────────────────────────
 
 // Same 2D problem in standard form: add slack s so x₁+x₂+s = 4.

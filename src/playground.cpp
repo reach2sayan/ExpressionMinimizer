@@ -21,6 +21,11 @@ struct PathCapture : exprmin::CallbackBase<PathCapture> {
     if (x.size() >= 2)
       pts->push_back({x[0], x[1]});
   }
+  void on_anneal_iter(int /*iter*/, double /*T*/, double /*ybest*/,
+                      std::span<const double> pbest) noexcept {
+    if (pbest.size() >= 2)
+      pts->push_back({pbest[0], pbest[1]});
+  }
 };
 
 template <typename Algo>
@@ -102,6 +107,10 @@ int main() {
     });
     record("Amoeba", [&](auto cb) {
       exprmin::Amoeba s{f, 3e-8, std::move(cb)};
+      return std::pair{s.minimize(p0, 0.5), s.get_optimal_value()};
+    });
+    record("SimAnneal", [&](auto cb) {
+      exprmin::SimAnneal s{f, 2.0, 0.97, 30, 3e-8, 0.3, std::move(cb)};
       return std::pair{s.minimize(p0, 0.5), s.get_optimal_value()};
     });
 
