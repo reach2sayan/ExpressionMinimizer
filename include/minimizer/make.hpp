@@ -17,6 +17,10 @@
 #include <boost/mp11/algorithm.hpp>
 #include <boost/mp11/list.hpp>
 
+#ifdef EXPRMIN_LOGGING
+#include "../logging/logging_callback.hpp"
+#endif
+
 namespace exprmin {
 
 namespace mp = boost::mp11;
@@ -136,5 +140,56 @@ template <HessianMode HM = HessianMode::BFGS, diff::CExpression Expr>
 auto make_dogleg(Expr e, typename Expr::value_type tol = 1e-8) {
   return Dogleg<Expr, HM>{std::move(e), tol};
 }
+
+// ── Logged overloads — only when ENABLE_LOGGING is ON ────────────────────────
+// Pass a *Signals& after the expression to get a logged solver back.
+// The Signals object is stored by pointer (non-owning); it must outlive the
+// returned solver.
+#ifdef EXPRMIN_LOGGING
+
+template <char... InputChars, diff::CExpression Expr>
+auto make_lm(Expr e, logging::LMSignals &signals,
+             typename Expr::value_type ftol = 1e-8) {
+  using AllSyms = diff::extract_symbols_from_expr_t<Expr>;
+  using InputSyms = mp::mp_list<std::integral_constant<char, InputChars>...>;
+  using ParamSyms = mp::mp_set_difference<AllSyms, InputSyms>;
+  return LevenbergMarquardt<Expr, ParamSyms, InputSyms,
+                            logging::LMSignalCallbacks>{
+      std::move(e), ftol, 1000, logging::LMSignalCallbacks(&signals)};
+}
+
+template <char... InputChars, diff::CExpression Expr>
+auto make_gn(Expr e, logging::GNSignals &signals,
+             typename Expr::value_type ftol = 1e-8) {
+  using AllSyms = diff::extract_symbols_from_expr_t<Expr>;
+  using InputSyms = mp::mp_list<std::integral_constant<char, InputChars>...>;
+  using ParamSyms = mp::mp_set_difference<AllSyms, InputSyms>;
+  return GaussNewton<Expr, ParamSyms, InputSyms, logging::GNSignalCallbacks>{
+      std::move(e), ftol, 1000, logging::GNSignalCallbacks(&signals)};
+}
+
+template <template <diff::CExpression> class LS1D = Brent, int M = 10,
+          diff::CExpression Expr>
+auto make_lbfgs(Expr e, logging::QNSignals &signals,
+                typename Expr::value_type gtol = 1e-8) {
+  return LBFGS<Expr, LS1D, M, logging::QNSignalCallbacks>{
+      std::move(e), gtol, logging::QNSignalCallbacks(&signals)};
+}
+
+template <HessianMode HM = HessianMode::BFGS, diff::CExpression Expr>
+auto make_dogleg(Expr e, logging::TRSignals &signals,
+                 typename Expr::value_type tol = 1e-8) {
+  return Dogleg<Expr, HM, logging::TRSignalCallbacks>{
+      std::move(e), tol, 200, 1e3, 1e-12, logging::TRSignalCallbacks(&signals)};
+}
+
+template <DoglegVariant DV = DoglegVariant::Standard, diff::CExpression... Rs>
+auto make_nls_dogleg(logging::TRSignals &signals, Rs... rs) {
+  return NLSDogleg<diff::Equation<Rs...>, DV, logging::TRSignalCallbacks>{
+      diff::Equation{std::move(rs)...},    1e-8, 200, 1e3, 1e-12,
+      logging::TRSignalCallbacks(&signals)};
+}
+
+#endif // EXPRMIN_LOGGING
 
 } // namespace exprmin

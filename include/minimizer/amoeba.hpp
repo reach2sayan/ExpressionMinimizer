@@ -2,6 +2,7 @@
 
 #include "expressions.hpp"
 #include "traits.hpp"
+#include "../callback/callback.hpp"
 #include <Eigen/Dense>
 #include <array>
 #include <boost/mp11/list.hpp>
@@ -172,7 +173,9 @@ Eigen::Matrix<T, N, N + 1> make_simplex_rand(const Eigen::Vector<T, N> &p,
  *                     @c false (default), the standard axis-aligned simplex is
  *                     used and no RNG state is stored.
  */
-template <diff::CExpression Expr, bool RandomInit = false> struct Amoeba {
+template <diff::CExpression Expr, bool RandomInit = false,
+          typename Callbacks = callback::NoCallbacks>
+struct Amoeba {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
@@ -193,6 +196,7 @@ private:
   using RngType = std::conditional_t<RandomInit, detail::RngBuffer<value_type>,
                                      detail::NoRng>;
   [[no_unique_address]] RngType rng_;
+  [[no_unique_address]] Callbacks cbs_{};
 
 public:
   /**
@@ -202,8 +206,9 @@ public:
    *               between the best and worst simplex vertices (default 3×10⁻⁸).
    */
   constexpr explicit Amoeba(Expr e,
-                            value_type ftol_ = static_cast<value_type>(3.0e-8))
-      : expr{std::move(e)}, ftol{ftol_} {}
+                            value_type ftol_ = static_cast<value_type>(3.0e-8),
+                            Callbacks cbs = {})
+      : expr{std::move(e)}, ftol{ftol_}, cbs_(cbs) {}
 
   /**
    * @brief Evaluates the expression at point @p p.
@@ -267,9 +272,9 @@ public:
  *
  * Returns the best vertex found, with the function value stored in fret.
  */
-template <diff::CExpression Expr, bool RandomInit>
-constexpr typename Amoeba<Expr, RandomInit>::Point
-Amoeba<Expr, RandomInit>::minimize(Simplex s) {
+template <diff::CExpression Expr, bool RandomInit, typename Callbacks>
+constexpr typename Amoeba<Expr, RandomInit, Callbacks>::Point
+Amoeba<Expr, RandomInit, Callbacks>::minimize(Simplex s) {
   // Step 1: evaluate f at every initial vertex.
   FVals y =
       FVals::NullaryExpr([&](Eigen::Index i) { return eval_at(s.col(i)); });
@@ -290,6 +295,7 @@ Amoeba<Expr, RandomInit>::minimize(Simplex s) {
     const std::size_t inhi = *std::ranges::max_element(
         not_ihi, std::less{}, [&y](std::size_t i) { return y[i]; });
 
+    cbs_.on_amoeba_iter(iter, y[ilo], y[ihi]);
     // Step 4: converge when the relative spread between best and worst is
     // small.
     if (value_type{2} * std::abs(y[ihi] - y[ilo]) /
@@ -332,6 +338,8 @@ Amoeba<Expr, RandomInit>::minimize(Simplex s) {
 
 template <diff::CExpression Expr> Amoeba(Expr) -> Amoeba<Expr>;
 template <diff::CExpression Expr, typename T> Amoeba(Expr, T) -> Amoeba<Expr>;
+template <diff::CExpression Expr, typename T>
+Amoeba(Expr, T, int) -> Amoeba<Expr>;
 
 /// @brief Factory for the standard axis-aligned simplex variant.
 template <diff::CExpression Expr>

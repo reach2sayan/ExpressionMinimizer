@@ -39,23 +39,36 @@ enum class DoglegVariant { Standard, Double };
  * @tparam System  diff::Equation<RExprs...> specialisation.
  * @tparam DV      DoglegVariant::Standard or DoglegVariant::Double.
  */
-template <typename System, DoglegVariant DV = DoglegVariant::Standard>
+template <typename System, DoglegVariant DV = DoglegVariant::Standard,
+          typename Callbacks = callback::NoCallbacks>
 struct NLSDogleg;
 
-template <diff::CExpression... RExprs, DoglegVariant DV>
-struct NLSDogleg<diff::Equation<RExprs...>, DV>
-    : NLSTrustRegionBase<NLSDogleg<diff::Equation<RExprs...>, DV>, RExprs...> {
+template <diff::CExpression... RExprs, DoglegVariant DV, typename Callbacks>
+struct NLSDogleg<diff::Equation<RExprs...>, DV, Callbacks>
+    : NLSTrustRegionBase<NLSDogleg<diff::Equation<RExprs...>, DV, Callbacks>, RExprs...> {
   using Base =
-      NLSTrustRegionBase<NLSDogleg<diff::Equation<RExprs...>, DV>, RExprs...>;
+      NLSTrustRegionBase<NLSDogleg<diff::Equation<RExprs...>, DV, Callbacks>, RExprs...>;
   using value_type = typename Base::value_type;
   using ParamVec = typename Base::ParamVec;
   using NMat = typename Base::NMat;
   using RVec = typename Base::RVec;
   using JMat = typename Base::JMat;
 
-  using Base::Base;
   using Base::get_optimal_value;
   using Base::iter;
+
+  constexpr explicit NLSDogleg(typename Base::Sys sys,
+                                value_type tol_ = value_type{1e-8},
+                                int itmax_ = 200,
+                                value_type tr0_ = value_type{1e3},
+                                value_type trmin_ = value_type{1e-12},
+                                Callbacks cbs = {})
+      : Base{std::move(sys), tol_, itmax_, tr0_, trmin_}, cbs_(cbs) {}
+
+  constexpr void on_tr_iter(int itr, value_type phi, value_type gnorm,
+                            value_type delta, value_type rho, bool accepted) noexcept {
+    cbs_.on_tr_iter(itr, phi, gnorm, delta, rho, accepted);
+  }
 
   /**
    * @brief Compute the dogleg step for the NLS trust-region subproblem.
@@ -77,13 +90,16 @@ struct NLSDogleg<diff::Equation<RExprs...>, DV>
    */
   constexpr ParamVec compute_step(const ParamVec &g, const NMat &B,
                                   value_type delta) const;
+
+private:
+  [[no_unique_address]] Callbacks cbs_{};
 };
 
-template <diff::CExpression... RExprs, DoglegVariant DV>
-constexpr typename NLSDogleg<diff::Equation<RExprs...>, DV>::ParamVec
-NLSDogleg<diff::Equation<RExprs...>, DV>::compute_step(const ParamVec &g,
-                                                       const NMat &B,
-                                                       value_type delta) const {
+template <diff::CExpression... RExprs, DoglegVariant DV, typename Callbacks>
+constexpr typename NLSDogleg<diff::Equation<RExprs...>, DV, Callbacks>::ParamVec
+NLSDogleg<diff::Equation<RExprs...>, DV, Callbacks>::compute_step(const ParamVec &g,
+                                                                   const NMat &B,
+                                                                   value_type delta) const {
   using std::abs, std::min, std::sqrt;
   const JMat &J = this->current_J();
 
@@ -150,5 +166,8 @@ NLSDogleg(diff::Equation<RExprs...>) -> NLSDogleg<diff::Equation<RExprs...>>;
 
 template <diff::CExpression... RExprs, typename T>
 NLSDogleg(diff::Equation<RExprs...>, T) -> NLSDogleg<diff::Equation<RExprs...>>;
+
+template <diff::CExpression... RExprs, typename T>
+NLSDogleg(diff::Equation<RExprs...>, T, int) -> NLSDogleg<diff::Equation<RExprs...>>;
 
 } // namespace exprmin

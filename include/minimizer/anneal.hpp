@@ -31,7 +31,8 @@ namespace mp = boost::mp11;
  *
  * @tparam Expr  A type satisfying the diff::CExpression concept.
  */
-template <diff::CExpression Expr> struct SimAnneal {
+template <diff::CExpression Expr, typename Callbacks = callback::NoCallbacks>
+struct SimAnneal {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr std::size_t N = mp::mp_size<Syms>::value;
@@ -52,6 +53,7 @@ private:
   const int epoch_steps;
   const value_type ftol;
   const value_type cold_delta;
+  [[no_unique_address]] Callbacks cbs_{};
 
   /**
    * @brief Samples the Boltzmann noise term T·log(U), U ~ Uniform(ε, 1).
@@ -89,9 +91,10 @@ public:
       Expr e, value_type T0 = value_type{1},
       value_type cool = static_cast<value_type>(0.9), int epoch = 100,
       value_type ftol_ = static_cast<value_type>(3.0e-8),
-      value_type cold_delta_ = static_cast<value_type>(0.1))
+      value_type cold_delta_ = static_cast<value_type>(0.1),
+      Callbacks cbs = {})
       : expr(std::move(e)), temperature(T0), cooling(cool), epoch_steps(epoch),
-        ftol(ftol_), cold_delta(cold_delta_), bolt{} {}
+        ftol(ftol_), cold_delta(cold_delta_), cbs_(cbs), bolt{} {}
 
   /**
    * @brief Builds an initial simplex around @p p and minimizes.
@@ -237,10 +240,10 @@ private:
  * Every @c epoch_steps iterations the temperature is decayed and @c yy is
  * refreshed with new noise samples at the current T.
  */
-template <diff::CExpression Expr>
-constexpr std::tuple<typename SimAnneal<Expr>::value_type,
-                     typename SimAnneal<Expr>::Point>
-SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y) {
+template <diff::CExpression Expr, typename Callbacks>
+constexpr std::tuple<typename SimAnneal<Expr, Callbacks>::value_type,
+                     typename SimAnneal<Expr, Callbacks>::Point>
+SimAnneal<Expr, Callbacks>::HotPhaseSA(Simplex s, FVals &y) {
 
   FVals yy =
       y.unaryExpr([&, this](value_type v) { return v + this->bolt(temperature); });
@@ -275,6 +278,7 @@ SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y) {
       ybest = ymin;
       pbest = s.col(ibest_idx);
     }
+    cbs_.on_anneal_iter(iter, temperature, ybest);
 
     value_type ytry = amotry(s, y, yy, psum, ihi, value_type{-1});
     if (ytry <= yy[ilo]) {
@@ -307,11 +311,11 @@ SimAnneal<Expr>::HotPhaseSA(Simplex s, FVals &y) {
  * < ftol.  Keeps updating pbest/ybest throughout so the caller always gets the
  * globally best point regardless of where the simplex ends up.
  */
-template <diff::CExpression Expr>
-constexpr std::tuple<typename SimAnneal<Expr>::value_type,
-                     typename SimAnneal<Expr>::Point>
-SimAnneal<Expr>::ColdPhaseSA(Simplex s, FVals y, Point pbest,
-                             value_type ybest) {
+template <diff::CExpression Expr, typename Callbacks>
+constexpr std::tuple<typename SimAnneal<Expr, Callbacks>::value_type,
+                     typename SimAnneal<Expr, Callbacks>::Point>
+SimAnneal<Expr, Callbacks>::ColdPhaseSA(Simplex s, FVals y, Point pbest,
+                                        value_type ybest) {
 
   y = FVals::NullaryExpr([&](Eigen::Index i) { return eval_at(s.col(i)); });
   Point psum = s.rowwise().sum();

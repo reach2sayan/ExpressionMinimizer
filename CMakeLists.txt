@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(DOXYGEN_GENERATE_LATEX YES)
 set(DOXYGEN_LATEX_CMD_NAME /usr/bin/pdflatex)
+option(ENABLE_LOGGING "Enable per-iteration logger (requires Boost.Signals2 + spdlog)" ON)
 
 option(ENABLE_NATIVE_ARCH "Build optimized for this machine" ON)
 option(ENABLE_MKL "Enable Intel MKL backend for Eigen when available" OFF)
@@ -125,6 +126,36 @@ target_include_directories(minimizer INTERFACE
 )
 target_link_libraries(minimizer INTERFACE diff Eigen3::Eigen eigen_backend Threads::Threads)
 target_compile_features(minimizer INTERFACE cxx_std_23)
+
+# ── Optional iteration logger (boost::signals2 + spdlog) ─────────────────────
+if (ENABLE_LOGGING)
+    # Boost — header-only signals2; the project already uses mp11 so Boost
+    # headers should already be on the path, but make it explicit here.
+    find_package(Boost QUIET)
+    if (NOT Boost_FOUND)
+        message(FATAL_ERROR "ENABLE_LOGGING requires Boost (Signals2 headers). "
+                "Install libboost-dev or set BOOST_ROOT.")
+    endif ()
+
+    # spdlog — prefer system install, fall back to FetchContent.
+    find_package(spdlog QUIET)
+    if (NOT spdlog_FOUND)
+        message(STATUS "spdlog: not found via find_package — fetching from GitHub")
+        include(FetchContent)
+        FetchContent_Declare(spdlog
+                GIT_REPOSITORY https://github.com/gabime/spdlog.git
+                GIT_TAG v1.14.1
+                GIT_SHALLOW TRUE)
+        set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(spdlog)
+    else ()
+        message(STATUS "spdlog: found (system, version ${spdlog_VERSION})")
+    endif ()
+
+    target_compile_definitions(minimizer INTERFACE EXPRMIN_LOGGING)
+    target_link_libraries(minimizer INTERFACE Boost::headers spdlog::spdlog_header_only)
+    message(STATUS "ENABLE_LOGGING: ON — iteration logger enabled")
+endif ()
 
 option(BUILD_DOCS "Build Doxygen API documentation" OFF)
 if (BUILD_DOCS)

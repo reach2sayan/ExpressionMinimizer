@@ -47,17 +47,18 @@ enum class HessianMode { BFGS, ExactAD };
  *                           diff::derivative_tensor<2>; required when B
  *                           must be exact (e.g. near the solution).
  */
-template <diff::CExpression Expr, HessianMode HM = HessianMode::BFGS>
+template <diff::CExpression Expr, HessianMode HM = HessianMode::BFGS,
+          typename Callbacks = callback::NoCallbacks>
 struct Dogleg
     : TrustRegionBase<
-          Dogleg<Expr, HM>, typename Expr::value_type,
+          Dogleg<Expr, HM, Callbacks>, typename Expr::value_type,
           static_cast<int>(
               mp::mp_size<diff::extract_symbols_from_expr_t<Expr>>::value)> {
 
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
   static constexpr int N = static_cast<int>(mp::mp_size<Syms>::value);
-  using Base = TrustRegionBase<Dogleg<Expr, HM>, value_type, N>;
+  using Base = TrustRegionBase<Dogleg<Expr, HM, Callbacks>, value_type, N>;
   using Point = Eigen::Vector<value_type, N>;
   using Matrix = Eigen::Matrix<value_type, N, N>;
 
@@ -96,9 +97,15 @@ struct Dogleg
   constexpr explicit Dogleg(Expr e, value_type tol_ = value_type{1e-8},
                             int itmax_ = 200,
                             value_type trustregion0_ = value_type{1e3},
-                            value_type trustregion_min_ = value_type{1e-12})
+                            value_type trustregion_min_ = value_type{1e-12},
+                            Callbacks cbs = {})
       : Base{tol_, itmax_, trustregion0_, trustregion_min_},
-        expr{std::move(e)} {}
+        expr{std::move(e)}, cbs_(cbs) {}
+
+  constexpr void on_tr_iter(int itr, value_type phi, value_type gnorm,
+                            value_type delta, value_type rho, bool accepted) noexcept {
+    cbs_.on_tr_iter(itr, phi, gnorm, delta, rho, accepted);
+  }
 
   /**
    * @brief Computes initial {f, g, B} state at @p p for TrustRegionBase.
@@ -227,10 +234,11 @@ private:
   Expr expr;
   Point g_new_{};
   value_type nn_{};
+  [[no_unique_address]] Callbacks cbs_{};
 };
 
-template <diff::CExpression Expr, HessianMode HM>
-constexpr void Dogleg<Expr, HM>::adjust_tr(value_type &delta, value_type rho,
+template <diff::CExpression Expr, HessianMode HM, typename Callbacks>
+constexpr void Dogleg<Expr, HM, Callbacks>::adjust_tr(value_type &delta, value_type rho,
                                            bool at_boundary) {
   if (rho < Base::TR_DOWN_THRESHOLD) {
     if (!at_boundary) {
@@ -241,10 +249,10 @@ constexpr void Dogleg<Expr, HM>::adjust_tr(value_type &delta, value_type rho,
     delta *= Base::TR_UP_FACTOR;
   }
 }
-template <diff::CExpression Expr, HessianMode HM>
-constexpr std::pair<typename Dogleg<Expr, HM>::Point,
-                    typename Dogleg<Expr, HM>::Matrix>
-Dogleg<Expr, HM>::commit_state(const Point &step, const Point &g_old,
+template <diff::CExpression Expr, HessianMode HM, typename Callbacks>
+constexpr std::pair<typename Dogleg<Expr, HM, Callbacks>::Point,
+                    typename Dogleg<Expr, HM, Callbacks>::Matrix>
+Dogleg<Expr, HM, Callbacks>::commit_state(const Point &step, const Point &g_old,
                                const Matrix &B_cur) {
   Matrix B_new = B_cur;
   if constexpr (HM == HessianMode::BFGS) {
@@ -262,5 +270,7 @@ Dogleg<Expr, HM>::commit_state(const Point &step, const Point &g_old,
 
 template <diff::CExpression Expr> Dogleg(Expr) -> Dogleg<Expr>;
 template <diff::CExpression Expr, typename T> Dogleg(Expr, T) -> Dogleg<Expr>;
+template <diff::CExpression Expr, typename T>
+Dogleg(Expr, T, int) -> Dogleg<Expr>;
 
 } // namespace exprmin

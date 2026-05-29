@@ -2,6 +2,7 @@
 
 #include "brent.hpp"
 #include "gradient.hpp"
+#include "../callback/callback.hpp"
 #include <Eigen/Dense>
 #include <boost/mp11/list.hpp>
 #include <cmath>
@@ -170,7 +171,8 @@ template <diff::Numeric T, int N, QNUpdate Update> struct QNDirState {
  * @tparam Expr  A type satisfying the diff::CExpression concept.
  * @tparam LS1D  Line-search policy (Brent, Dbrent, or Armijo).
  */
-template <diff::CExpression Expr, template <diff::CExpression> class LS1D>
+template <diff::CExpression Expr, template <diff::CExpression> class LS1D,
+          typename Callbacks = callback::NoCallbacks>
 struct QuasiNewtonBase {
   using value_type = typename Expr::value_type;
   using Syms = diff::extract_symbols_from_expr_t<Expr>;
@@ -182,6 +184,7 @@ protected:
   value_type fret{};
   int iter{};
   const value_type gtol;
+  [[no_unique_address]] Callbacks cbs_{};
 
 public:
   /**
@@ -189,8 +192,8 @@ public:
    * @param e      Expression to minimize.
    * @param gtol_  Scaled-gradient convergence tolerance; passed to ls.
    */
-  constexpr explicit QuasiNewtonBase(Expr e, value_type gtol_)
-      : ls(std::move(e), gtol_), gtol(gtol_) {}
+  constexpr explicit QuasiNewtonBase(Expr e, value_type gtol_, Callbacks cbs = {})
+      : ls(std::move(e), gtol_), gtol(gtol_), cbs_(cbs) {}
 
   /// @brief Evaluates the expression at point @p p.
   constexpr value_type eval_at(const Point &p) { return ls.eval_at(p); }
@@ -274,6 +277,8 @@ protected:
       const Point dx = ls_fn(x, xi, fp, g.dot(xi));
       x += dx;
 
+      cbs_.on_qn_iter(iter_out, fp, scaled_grad_inf_norm, dx.norm());
+
       // Re-evaluate at the new point, feed (s, y) = (dx, Δg) to the
       // direction state so it can update its Hessian approximation.
       auto [fn, g_new] = eg(x);
@@ -298,9 +303,10 @@ protected:
  */
 template <diff::CExpression Expr,
           template <diff::CExpression> class LS1D = Brent,
-          QNUpdate Update = QNUpdate::BFGS>
-struct QuasiNewton : QuasiNewtonBase<Expr, LS1D> {
-  using Base = QuasiNewtonBase<Expr, LS1D>;
+          QNUpdate Update = QNUpdate::BFGS,
+          typename Callbacks = callback::NoCallbacks>
+struct QuasiNewton : QuasiNewtonBase<Expr, LS1D, Callbacks> {
+  using Base = QuasiNewtonBase<Expr, LS1D, Callbacks>;
   using Base::eval_at;
   using Base::fret;
   using Base::gtol;
@@ -317,8 +323,9 @@ struct QuasiNewton : QuasiNewtonBase<Expr, LS1D> {
    * @param gtol_  Scaled-gradient convergence tolerance (default 10⁻⁸).
    */
   constexpr explicit QuasiNewton(
-      Expr e, value_type gtol_ = static_cast<value_type>(1e-8))
-      : Base(std::move(e), gtol_) {}
+      Expr e, value_type gtol_ = static_cast<value_type>(1e-8),
+      Callbacks cbs = {})
+      : Base(std::move(e), gtol_, std::move(cbs)) {}
 
   /**
    * @brief Minimizes from initial point @p p.
@@ -338,8 +345,8 @@ private:
   using DirState = QNDirState<value_type, static_cast<int>(Base::N), Update>;
 };
 
-template <diff::CExpression Expr, template <diff::CExpression> class LS1D>
-constexpr auto QuasiNewtonBase<Expr, LS1D>::make_line_search_fn() {
+template <diff::CExpression Expr, template <diff::CExpression> class LS1D, typename Callbacks>
+constexpr auto QuasiNewtonBase<Expr, LS1D, Callbacks>::make_line_search_fn() {
   return [this](const Point &xc, const Point &xi, value_type fp,
                 value_type slope) -> Point {
     auto f1d = [this, &xc, &xi](value_type t) {
