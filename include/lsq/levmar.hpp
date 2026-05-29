@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lsq_base.hpp"
+#include "../callback/callback.hpp"
 #include <cmath>
 
 namespace exprmin {
@@ -27,7 +28,8 @@ namespace exprmin {
  */
 template <diff::CExpression Expr,
           typename ParamSyms = diff::extract_symbols_from_expr_t<Expr>,
-          typename InputSyms = mp::mp_list<>>
+          typename InputSyms = mp::mp_list<>,
+          typename Callbacks = callback::NoCallbacks>
 struct LevenbergMarquardt : LeastSquaresBase<Expr, ParamSyms, InputSyms> {
   using Base = LeastSquaresBase<Expr, ParamSyms, InputSyms>;
   using typename Base::DataPoint;
@@ -40,8 +42,9 @@ struct LevenbergMarquardt : LeastSquaresBase<Expr, ParamSyms, InputSyms> {
 
   constexpr explicit LevenbergMarquardt(Expr e,
                                         value_type ftol_ = value_type{1e-8},
-                                        int itmax_ = 1000)
-      : Base(std::move(e)), ftol(ftol_), itmax(itmax_) {}
+                                        int itmax_ = 1000,
+                                        Callbacks cbs = {})
+      : Base(std::move(e)), ftol(ftol_), itmax(itmax_), cbs_(cbs) {}
 
   /**
    * @brief Run the LM iteration from an initial parameter vector.
@@ -60,11 +63,12 @@ struct LevenbergMarquardt : LeastSquaresBase<Expr, ParamSyms, InputSyms> {
 private:
   value_type ftol;
   int itmax;
+  [[no_unique_address]] Callbacks cbs_{};
 };
 
-template <diff::CExpression Expr, typename ParamSyms, typename InputSyms>
-constexpr LevenbergMarquardt<Expr, ParamSyms, InputSyms>::ParamVec
-LevenbergMarquardt<Expr, ParamSyms, InputSyms>::fit(
+template <diff::CExpression Expr, typename ParamSyms, typename InputSyms, typename Callbacks>
+constexpr LevenbergMarquardt<Expr, ParamSyms, InputSyms, Callbacks>::ParamVec
+LevenbergMarquardt<Expr, ParamSyms, InputSyms, Callbacks>::fit(
     ParamVec params, const std::vector<DataPoint> &data) {
   using std::abs;
   constexpr int Ni = static_cast<int>(Base::N);
@@ -77,6 +81,7 @@ LevenbergMarquardt<Expr, ParamSyms, InputSyms>::fit(
   value_type chi2 = r.squaredNorm(); // χ² = ‖r‖²
 
   for (int iter = 0; iter < itmax; ++iter) {
+    cbs_.on_lm_outer(iter, lambda, chi2);
     // Step 2: build the Gauss-Newton normal matrix JᵀJ and RHS −Jᵀr.
     const NMat JtJ = J.transpose() * J;
     const NVec beta = -(J.transpose() * r); // −Jᵀr: gradient of ½χ²
@@ -98,6 +103,7 @@ LevenbergMarquardt<Expr, ParamSyms, InputSyms>::fit(
     if (chi2_new < chi2) {
       // Step 6a: improvement — move more Newton-like (shrink λ).
       lambda *= LAMBDA_DOWN;
+      cbs_.on_lm_inner(iter, lambda, chi2_new, true);
       // Step 6b: convergence test — step size and objective change both tiny.
       if ((da.norm() < ftol * (params.norm() + ftol)) ||
           (abs(chi2 - chi2_new) < ftol * (value_type{1} + chi2))) {
@@ -112,6 +118,7 @@ LevenbergMarquardt<Expr, ParamSyms, InputSyms>::fit(
       // Step 6d: no improvement — move more gradient-descent-like (grow λ) and
       // retry.
       lambda *= LAMBDA_UP;
+      cbs_.on_lm_inner(iter, lambda, chi2_new, false);
     }
   }
   return params;
@@ -121,6 +128,8 @@ template <diff::CExpression Expr>
 LevenbergMarquardt(Expr) -> LevenbergMarquardt<Expr>;
 template <diff::CExpression Expr, diff::Numeric T>
 LevenbergMarquardt(Expr, T) -> LevenbergMarquardt<Expr>;
+template <diff::CExpression Expr, diff::Numeric T>
+LevenbergMarquardt(Expr, T, int) -> LevenbergMarquardt<Expr>;
 
 template <diff::CExpression Expr> using LM = LevenbergMarquardt<Expr>;
 

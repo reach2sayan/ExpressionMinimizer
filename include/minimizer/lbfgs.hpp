@@ -33,9 +33,10 @@ namespace exprmin {
  *               higher per-iteration cost (see Table 7.1).
  */
 template <diff::CExpression Expr,
-          template <diff::CExpression> class LS1D = Brent, int M = 10>
-struct LBFGS : QuasiNewtonBase<Expr, LS1D> {
-  using Base = QuasiNewtonBase<Expr, LS1D>;
+          template <diff::CExpression> class LS1D = Brent, int M = 10,
+          typename Callbacks = NoCallbacks>
+struct LBFGS : QuasiNewtonBase<Expr, LS1D, Callbacks> {
+  using Base = QuasiNewtonBase<Expr, LS1D, Callbacks>;
   using Base::eval_at;
   using Base::eval_grad;
   using Base::fret;
@@ -51,8 +52,9 @@ struct LBFGS : QuasiNewtonBase<Expr, LS1D> {
    * @param gtol_  Scaled-gradient convergence tolerance (default 10⁻⁸).
    */
   constexpr explicit LBFGS(Expr e,
-                           value_type gtol_ = static_cast<value_type>(1e-8))
-      : Base(std::move(e), gtol_) {}
+                           value_type gtol_ = static_cast<value_type>(1e-8),
+                           Callbacks cbs = {})
+      : Base(std::move(e), gtol_, std::move(cbs)) {}
 
   /**
    * @brief Minimizes from initial point @p p.

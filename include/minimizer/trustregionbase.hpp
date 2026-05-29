@@ -2,6 +2,7 @@
 
 #include "equation.hpp"
 #include "gradient.hpp"
+#include "../callback/callback.hpp"
 #include <Eigen/Dense>
 #include <algorithm>
 #include <array>
@@ -45,6 +46,9 @@ template <typename Derived, typename T, int N> struct TrustRegionBase {
 
   int iter{};
   constexpr T get_optimal_value() const { return fret; }
+
+  // Default CRTP hook — overridden by derived classes that hold a Callbacks member.
+  constexpr void on_tr_iter(int, T, T, T, T, bool) const noexcept {}
 
   /**
    * @brief Execute the trust-region outer loop (N&W Alg. 4.1) from x₀ = @p p.
@@ -117,6 +121,7 @@ TrustRegionBase<Derived, T, N>::minimize(ParamVec p) {
     const T rho = (pred > T{0}) ? (phi - phi_new) / pred : T{0};
 
     // Step 7: adapt Δ based on ρ (Alg. 4.1 policy).
+    self().on_tr_iter(iter, phi, gnorm, delta, rho, rho > T{0});
     self().adjust_tr(delta, rho, at_boundary);
     if (delta < trustregion_min) {
       break; // radius collapsed to machine noise; further progress impossible

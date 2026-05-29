@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lsq_base.hpp"
+#include "../callback/callback.hpp"
 
 namespace exprmin {
 
@@ -39,7 +40,8 @@ namespace exprmin {
  */
 template <diff::CExpression Expr,
           typename ParamSyms = diff::extract_symbols_from_expr_t<Expr>,
-          typename InputSyms = mp::mp_list<>>
+          typename InputSyms = mp::mp_list<>,
+          typename Callbacks = callback::NoCallbacks>
 struct GaussNewton : LeastSquaresBase<Expr, ParamSyms, InputSyms> {
   using Base = LeastSquaresBase<Expr, ParamSyms, InputSyms>;
   using Base::eval_rJ;
@@ -48,8 +50,8 @@ struct GaussNewton : LeastSquaresBase<Expr, ParamSyms, InputSyms> {
   using typename Base::value_type;
 
   constexpr explicit GaussNewton(Expr e, value_type ftol_ = value_type{1e-8},
-                                 int itmax_ = 1000)
-      : Base(std::move(e)), ftol(ftol_), itmax(itmax_) {}
+                                 int itmax_ = 1000, Callbacks cbs = {})
+      : Base(std::move(e)), ftol(ftol_), itmax(itmax_), cbs_(cbs) {}
 
   /**
    * @brief Fit parameters to @p data starting from @p params.
@@ -63,11 +65,12 @@ struct GaussNewton : LeastSquaresBase<Expr, ParamSyms, InputSyms> {
 private:
   value_type ftol;
   const int itmax;
+  [[no_unique_address]] Callbacks cbs_{};
 };
 
-template <diff::CExpression Expr, typename ParamSyms, typename InputSyms>
-constexpr typename GaussNewton<Expr, ParamSyms, InputSyms>::ParamVec
-GaussNewton<Expr, ParamSyms, InputSyms>::fit(
+template <diff::CExpression Expr, typename ParamSyms, typename InputSyms, typename Callbacks>
+constexpr typename GaussNewton<Expr, ParamSyms, InputSyms, Callbacks>::ParamVec
+GaussNewton<Expr, ParamSyms, InputSyms, Callbacks>::fit(
     ParamVec params, const std::vector<DataPoint> &data) {
   constexpr int Ni = static_cast<int>(Base::N);
   using NVec = Eigen::Vector<value_type, Ni>;
@@ -95,6 +98,7 @@ GaussNewton<Expr, ParamSyms, InputSyms>::fit(
     // Step 4: relative step-norm stopping rule (Dennis & Schnabel §8.2.8).
     // Stops when the step is negligible relative to the current parameter
     // scale.
+    cbs_.on_gn_iter(iter, step.norm(), r.norm());
     if (step.norm() < ftol * (params.norm() + ftol)) {
       break;
     }
@@ -105,5 +109,7 @@ GaussNewton<Expr, ParamSyms, InputSyms>::fit(
 template <diff::CExpression Expr> GaussNewton(Expr) -> GaussNewton<Expr>;
 template <diff::CExpression Expr, typename T>
 GaussNewton(Expr, T) -> GaussNewton<Expr>;
+template <diff::CExpression Expr, typename T>
+GaussNewton(Expr, T, int) -> GaussNewton<Expr>;
 
 } // namespace exprmin
