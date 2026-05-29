@@ -36,7 +36,12 @@ json make_grid(Algo &algo, double xlo, double xhi, int nx, double ylo,
   return {{"xlo", xlo}, {"xhi", xhi}, {"nx", nx},         {"ylo", ylo},
           {"yhi", yhi}, {"ny", ny},   {"z", std::move(z)}};
 }
-
+template <typename URBG>
+Eigen::Vector2d random_point(double xlo, double xhi, double ylo, double yhi,
+                             URBG &rng) {
+  return {std::uniform_real_distribution<double>(xlo, xhi)(rng),
+          std::uniform_real_distribution<double>(ylo, yhi)(rng)};
+}
 // =============================================================================
 //  PLAYGROUND — change the expression and starting point, then:
 //
@@ -54,6 +59,7 @@ int main() {
   // need to change.  The grid is evaluated by C++; Python plots blindly.
   const std::string title = "Himmelblau";
 
+  std::mt19937 rng(std::random_device{}());
   auto x = PV(0.0, 'x');
   auto y = PV(0.0, 'y');
   auto f = (x * x + y - 11.0) * (x * x + y - 11.0) +
@@ -64,8 +70,8 @@ int main() {
   constexpr double ylo = -5.0, yhi = 5.0;
   constexpr int nx = 250, ny = 250;
 
-  const Eigen::Vector2d p0{0.0, 0.0}; // equidistant from all four minima
-
+  // const Eigen::Vector2d p0{0.0, 0.0}; // equidistant from all four minima
+  auto p0 = random_point(xlo, xhi, ylo, yhi, rng);
   // ── 3. Evaluate grid (once — used for the Python contour) ────────────────
   std::printf("=== %s  start=(%.2f, %.2f) ===\n\n", title.c_str(), p0[0],
               p0[1]);
@@ -84,6 +90,7 @@ int main() {
     auto [r, fopt] = run_fn(PathCapture{pts});
     std::printf("%-14s [%.6f, %.6f]  f=%.2e  iters=%zu\n", (name + ":").c_str(),
                 r[0], r[1], fopt, pts.size());
+    p0 = random_point(xlo, xhi, ylo, yhi, rng);
     root["paths"].push_back({
         {"name", name},
         {"start", {p0[0], p0[1]}},
