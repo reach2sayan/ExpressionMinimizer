@@ -278,7 +278,8 @@ SimAnneal<Expr, Callbacks>::HotPhaseSA(Simplex s, FVals &y) {
       ybest = ymin;
       pbest = s.col(ibest_idx);
     }
-    cbs_.on_anneal_iter(iter, temperature, ybest);
+    cbs_.on_anneal_iter(iter, temperature, ybest,
+                        std::span<const value_type>(pbest.data(), pbest.size()));
 
     value_type ytry = amotry(s, y, yy, psum, ihi, value_type{-1});
     if (ytry <= yy[ilo]) {
