@@ -18,6 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from pathlib import Path
+from scipy.interpolate import RegularGridInterpolator
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 data_file = sys.argv[1] if len(sys.argv) > 1 else "optimization_data.json"
@@ -66,6 +67,11 @@ ax.clabel(cs, cs.levels, inline=True, fontsize=7, fmt="%.3g",
 ax.grid(True, color="#888888", linewidth=0.4, alpha=0.4, linestyle="--")
 ax.set_axisbelow(True)
 
+# ── Interpolator for per-point contour levels ─────────────────────────────────
+# RegularGridInterpolator expects (row, col) = (y, x) ordering
+interp = RegularGridInterpolator((Y, X), Z, method="linear",
+                                 bounds_error=False, fill_value=None)
+
 # ── Algorithm paths ───────────────────────────────────────────────────────────
 # High-contrast, distinct hues that read well on a light background
 COLORS = ["#d62728", "#1f77b4", "#2ca02c", "#ff7f0e",
@@ -84,10 +90,18 @@ for i, algo in enumerate(paths):
     xs, ys = zip(*pts)
     c = COLORS[i % len(COLORS)]
 
+    # Draw a contour line at each iteration point's f-value (in algorithm color)
+    fvals = interp(np.column_stack([ys, xs]))
+    pt_levels = np.unique(np.round(fvals, 8))
+    pt_levels = pt_levels[(pt_levels >= zmin) & (pt_levels <= zmax)]
+    if len(pt_levels):
+        ax.contour(X, Y, Z, levels=pt_levels, colors=[c],
+                   linewidths=0.6, alpha=0.45, zorder=2, norm=norm)
+
     ax.plot(xs, ys, color=c, linewidth=2.0, alpha=0.95,
             label=f"{name} ({len(pts)} iters)", zorder=3)
-    ax.scatter(xs, ys, color=c, s=18, zorder=4, alpha=0.75,
-               edgecolors="white", linewidths=0.4)
+    ax.scatter(xs, ys, color=c, s=28, zorder=4, alpha=0.90,
+               edgecolors="#111111", linewidths=0.8)
 
     if start:
         ax.scatter(*start, color=c, s=150, marker="o", zorder=6,
