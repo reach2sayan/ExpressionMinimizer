@@ -335,6 +335,19 @@ size, NLS residual packing, or the curve-fitting symbol partition).
 | `make_frprmn<CGMethod::FletcherReeves>(f)` | `Frprmn<Expr, FletcherReeves>` |
 | `make_dogleg<HessianMode::ExactAD>(f)` | `Dogleg<Expr, ExactAD>` |
 
+## Extending
+
+See **[extending.md](extending.md)** for a guide on:
+
+- Writing **custom callbacks** (CRTP `CallbackBase`, `CompositeCallbacks`)
+- Implementing **custom solvers** by deriving from `QuasiNewtonBase`,
+  `TrustRegionBase`, `NLSTrustRegionBase`, or `LeastSquaresBase`
+- Tuning **algorithm policies** — CG method, Hessian mode, L-BFGS history
+  depth, NLS dogleg variant — without subclassing
+- Setting up **constrained optimization** with `AugLag` and `make_eq` /
+  `make_ineq`
+- Using **Broyden root finding** for square nonlinear systems
+
 ## License
 
 Distributed under the [Boost Software License 1.0](LICENSE.txt).
