@@ -82,6 +82,7 @@ LevenbergMarquardt<Expr, ParamSyms, InputSyms, Callbacks>::fit(
 
   for (int iter = 0; iter < itmax; ++iter) {
     cbs_.on_lm_outer(iter, lambda, chi2);
+    cbs_.on_iter_point(iter, std::span<const value_type>(params.data(), Base::N));
     // Step 2: build the Gauss-Newton normal matrix JᵀJ and RHS −Jᵀr.
     const NMat JtJ = J.transpose() * J;
     const NVec beta = -(J.transpose() * r); // −Jᵀr: gradient of ½χ²

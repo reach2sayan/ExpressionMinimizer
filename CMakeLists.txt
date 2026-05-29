@@ -157,6 +157,41 @@ if (ENABLE_LOGGING)
     message(STATUS "ENABLE_LOGGING: ON — iteration logger enabled")
 endif ()
 
+# ── nlohmann/json (playground only) ──────────────────────────────────────────
+find_package(nlohmann_json QUIET)
+if (NOT nlohmann_json_FOUND)
+    message(STATUS "nlohmann/json: not found — fetching from GitHub")
+    FetchContent_Declare(nlohmann_json
+            URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
+            DOWNLOAD_NO_EXTRACT TRUE)
+    FetchContent_MakeAvailable(nlohmann_json)
+    # Single-header download lands at nlohmann_json_SOURCE_DIR/json.hpp.
+    # To support #include <nlohmann/json.hpp>, copy it into a nlohmann/ subdir.
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/nlohmann_include/nlohmann)
+    file(COPY ${nlohmann_json_SOURCE_DIR}/json.hpp
+         DESTINATION ${CMAKE_BINARY_DIR}/nlohmann_include/nlohmann)
+    add_library(nlohmann_json_header INTERFACE)
+    target_include_directories(nlohmann_json_header INTERFACE
+            ${CMAKE_BINARY_DIR}/nlohmann_include)
+    add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json_header)
+else ()
+    message(STATUS "nlohmann/json: found (system)")
+endif ()
+
+# ── Playground ───────────────────────────────────────────────────────────────
+add_executable(playground src/playground.cpp)
+target_link_libraries(playground PRIVATE minimizer nlohmann_json::nlohmann_json)
+target_include_directories(playground PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/deps/expression_differentiator)
+set_target_properties(playground PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+if (EXPRMIN_COMPILER_GCC)
+    target_compile_options(playground PRIVATE -Wall -Wextra)
+elseif (EXPRMIN_COMPILER_CLANG)
+    target_compile_options(playground PRIVATE -Wall -Wextra)
+endif ()
+
 option(BUILD_DOCS "Build Doxygen API documentation" OFF)
 if (BUILD_DOCS)
     find_package(Doxygen REQUIRED)

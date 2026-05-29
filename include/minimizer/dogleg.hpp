@@ -106,6 +106,9 @@ struct Dogleg
                             value_type delta, value_type rho, bool accepted) noexcept {
     cbs_.on_tr_iter(itr, phi, gnorm, delta, rho, accepted);
   }
+  constexpr void on_iter_point(int itr, const Point &p) noexcept {
+    cbs_.on_iter_point(itr, std::span<const value_type>(p.data(), N));
+  }
 
   /**
    * @brief Computes initial {f, g, B} state at @p p for TrustRegionBase.
