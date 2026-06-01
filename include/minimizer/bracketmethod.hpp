@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "detail/constexpr_math.hpp"
 #include "expressions.hpp"
 #include "traits.hpp"
 #include <Eigen/Dense>
@@ -12,17 +13,6 @@
 namespace exprmin {
 
 namespace mp = boost::mp11;
-
-namespace detail {
-template <diff::Numeric T> constexpr T abs_for_constexpr(T value) {
-#ifdef _MSC_VER
-  return value < T{} ? -value : value;
-#else
-  using std::abs;
-  return abs(value);
-#endif
-}
-} // namespace detail
 
 /**
  * @brief NR §10.1 — Downhill bracket search for a 1-D minimum.
