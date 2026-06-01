@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <numbers>
 
 #include "expressions.hpp"
@@ -11,6 +12,17 @@
 namespace exprmin {
 
 namespace mp = boost::mp11;
+
+namespace detail {
+template <diff::Numeric T> constexpr T abs_for_constexpr(T value) {
+#ifdef _MSC_VER
+  return value < T{} ? -value : value;
+#else
+  using std::abs;
+  return abs(value);
+#endif
+}
+} // namespace detail
 
 /**
  * @brief NR §10.1 — Downhill bracket search for a 1-D minimum.
@@ -36,7 +48,6 @@ struct BracketFn {
   template <diff::Numeric T, std::invocable<T> F>
   constexpr void operator()(F &f, T &ax, T &bx, T &cx, T &fa, T &fb,
                             T &fc) const {
-    using std::abs;
     using std::max;
     using std::swap;
     constexpr T GOLD = static_cast<T>(std::numbers::phi_v<double>);
@@ -60,7 +71,8 @@ struct BracketFn {
       const T q = (bx - cx) * (fb - fa);
       const T qdiff = q - r;
       const T denom =
-          T{2} * (qdiff >= T{} ? T{1} : T{-1}) * max(abs(qdiff), TINY);
+          T{2} * (qdiff >= T{} ? T{1} : T{-1}) *
+          max(detail::abs_for_constexpr(qdiff), TINY);
       T u = bx - ((bx - cx) * q - (bx - ax) * r) / denom;
       T ulim = bx + GLIMIT * (cx - bx);
       T fu = f(u);

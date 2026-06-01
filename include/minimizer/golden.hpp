@@ -78,9 +78,8 @@ public:
 
 template <diff::CExpression Expr>
 constexpr typename Golden<Expr>::value_type Golden<Expr>::minimize() {
-  using std::abs;
   value_type x0 = ax, x3 = cx, x1{}, x2{};
-  if (abs(cx - bx) > abs(bx - ax)) {
+  if (detail::abs_for_constexpr(cx - bx) > detail::abs_for_constexpr(bx - ax)) {
     x1 = bx;
     x2 = bx + C * (cx - bx);
   } else {
@@ -92,7 +91,8 @@ constexpr typename Golden<Expr>::value_type Golden<Expr>::minimize() {
   auto f2 = eval_at(
       x2); // from bracket(); only interior trial points are evaluated here
 
-  while (abs(x3 - x0) > tol * (abs(x1) + abs(x2))) {
+  while (detail::abs_for_constexpr(x3 - x0) >
+         tol * (detail::abs_for_constexpr(x1) + detail::abs_for_constexpr(x2))) {
     if (f2 < f1) { // minimum in [x1, x3]: discard x0, shift left boundary right
       x0 = x1;
       x1 = x2;

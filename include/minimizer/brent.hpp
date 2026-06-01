@@ -29,7 +29,6 @@ struct BrentFn {
   constexpr T operator()(F &f, const T &ax, const T &bx, const T &cx,
                          const T &tol, const T &zeps,
                          const int itmax = 100) const {
-    using std::abs;
     using std::max;
     using std::min;
     constexpr T CGOLD = static_cast<T>(1.0 - 1.0 / std::numbers::phi_v<double>);
@@ -51,15 +50,15 @@ struct BrentFn {
     };
     for (int i = 0; i < itmax; ++i) {
       const T xm = T{0.5} * (a + b);
-      const T tol1 = tol * abs(x) + zeps;
+      const T tol1 = tol * detail::abs_for_constexpr(x) + zeps;
       const T tol2 = T{2} * tol1;
 
-      if (abs(x - xm) <= tol2 - T{0.5} * (b - a)) {
+      if (detail::abs_for_constexpr(x - xm) <= tol2 - T{0.5} * (b - a)) {
         return x;
       }
 
       T u;
-      if (abs(e) > tol1) {
+      if (detail::abs_for_constexpr(e) > tol1) {
         // attempt parabolic interpolation through (x, w, v)
         T r = (x - w) * (fx - fv);
         T q = (x - v) * (fx - fw);
@@ -68,11 +67,12 @@ struct BrentFn {
         if (q > T{}) {
           p = -p;
         }
-        q = abs(q);
+        q = detail::abs_for_constexpr(q);
         const T etemp = e;
         e = d;
-        if (abs(p) >= abs(T{0.5} * q * etemp) || p <= q * (a - x) ||
-            p >= q * (b - x)) {
+        if (detail::abs_for_constexpr(p) >=
+                detail::abs_for_constexpr(T{0.5} * q * etemp) ||
+            p <= q * (a - x) || p >= q * (b - x)) {
           // parabolic step is too large or out of bracket; fall back to golden
           // section
           golden_section_step(e, d, a, b, x, xm);
@@ -90,7 +90,9 @@ struct BrentFn {
       }
 
       // clamp step to at least tol1 so u is never evaluated right on top of x
-      u = (abs(d) >= tol1 ? x + d : x + (d >= T{} ? tol1 : -tol1));
+      u = (detail::abs_for_constexpr(d) >= tol1
+               ? x + d
+               : x + (d >= T{} ? tol1 : -tol1));
       const T fu = f(u);
 
       // --- housekeeping: tighten the bracket and maintain the ranked trio ---
@@ -166,7 +168,6 @@ struct DbrentFn {
   template <diff::Numeric T, std::invocable<T> F>
   constexpr T operator()(F &f, const T &ax, const T &bx, const T &cx,
                          const T &tol, const T &zeps, int itmax = 100) const {
-    using std::abs;
     using std::max;
     using std::min;
 
@@ -181,9 +182,9 @@ struct DbrentFn {
 
     for (int i = 0; i < itmax; ++i) {
       const T xm = T{0.5} * (a + b);
-      const T tol1 = tol * abs(x) + zeps;
+      const T tol1 = tol * detail::abs_for_constexpr(x) + zeps;
       const T tol2 = T{2} * tol1;
-      if (abs(x - xm) <= tol2 - T{0.5} * (b - a)) {
+      if (detail::abs_for_constexpr(x - xm) <= tol2 - T{0.5} * (b - a)) {
         return x;
       }
 
@@ -194,7 +195,7 @@ struct DbrentFn {
         return dx >= T{} ? a - x : b - x;
       };
 
-      if (abs(e) > tol1) {
+      if (detail::abs_for_constexpr(e) > tol1) {
         // Attempt secant steps using the (x,w) and (x,v) derivative pairs.
         // Initialise d1/d2 to a value outside [a,b] so ok1/ok2 stays false
         // for whichever pair has equal derivatives (no valid secant step).
@@ -214,8 +215,13 @@ struct DbrentFn {
         e = d;
         if (ok1 || ok2) {
           // prefer the shorter of the two valid steps
-          d = (ok1 && ok2) ? (abs(d1) < abs(d2) ? d1 : d2) : (ok1 ? d1 : d2);
-          if (abs(d) <= abs(T{0.5} * olde)) {
+          d = (ok1 && ok2)
+                  ? (detail::abs_for_constexpr(d1) < detail::abs_for_constexpr(d2)
+                         ? d1
+                         : d2)
+                  : (ok1 ? d1 : d2);
+          if (detail::abs_for_constexpr(d) <=
+              detail::abs_for_constexpr(T{0.5} * olde)) {
             const T u = x + d;
             if (u - a < tol2 || b - u < tol2)
               d = (xm >= x ? tol1 : -tol1);
@@ -232,7 +238,9 @@ struct DbrentFn {
         d = T{0.5} * e;
       }
 
-      const T u = (abs(d) >= tol1 ? x + d : x + (d >= T{} ? tol1 : -tol1));
+      const T u = (detail::abs_for_constexpr(d) >= tol1
+                       ? x + d
+                       : x + (d >= T{} ? tol1 : -tol1));
       const T fu = f(u);
       const T du = f.df(u);
 
