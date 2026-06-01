@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc
+            os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+          - name: clang
+            os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+          - name: msvc
+            os: windows-latest
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Boost (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libboost-dev
+
+      - name: Install Boost (Windows)
+        if: runner.os == 'Windows'
+        id: boost
+        uses: MarkusJx/install-boost@v2
+        with:
+          boost_version: 1.85.0
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+          BOOST_ROOT: ${{ steps.boost.outputs.BOOST_ROOT }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
