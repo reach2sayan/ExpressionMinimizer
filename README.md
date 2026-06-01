@@ -1,5 +1,7 @@
 # ExpressionMinimizer
 
+[![CI](https://github.com/reach2sayan/ExpressionMinimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/reach2sayan/ExpressionMinimizer/actions/workflows/ci.yml)
+
 A header-only C++23 library of numerical minimization algorithms from
 *Numerical Recipes* (NR) Ch. 10 & 15, wired to the
 [ExpressionDifferentiator](https://github.com/reach2sayan/ExpressionDifferentiator)
