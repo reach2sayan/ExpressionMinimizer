@@ -8,19 +8,19 @@
 
 static constexpr double kTol = 1e-5;
 inline auto make_bowl2d() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   return (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
 }
 inline auto make_rosenbrock() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   return (1.0 - x) * (1.0 - x) + 100.0 * (y - x * x) * (y - x * x);
 }
 inline auto make_quad3d() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
-  auto z = PV(0.0, 'z');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
+  auto z = PV(0.0, "z");
   return x * x + 2.0 * y * y + 3.0 * z * z;
 }
 
@@ -91,7 +91,7 @@ TYPED_TEST(Quad3DTest, Converges) {
 
 // ─── Bracketmethod ──────────────────────────────────────────────
 TEST(Bracketmethod, QuadraticBrackets) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto f = (x - 3.0) * (x - 3.0);
   exprmin::Bracketmethod bm{f};
   bm.bracket(0.0, 1.0);
@@ -101,7 +101,7 @@ TEST(Bracketmethod, QuadraticBrackets) {
   EXPECT_GE(std::max(bm.ax, bm.cx), 3.0);
 }
 TEST(Bracketmethod, SingleCycleConverges) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto f = x * x * x * x - 14 * x * x * x + 60 * x * x - 70 * x;
   exprmin::Bracketmethod bm{f};
   EXPECT_NO_THROW(bm.bracket(0.0, 1.0));
@@ -110,14 +110,14 @@ TEST(Bracketmethod, SingleCycleConverges) {
 }
 
 TEST(Golden, QuadraticMinimum) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto f = (x - 2.0) * (x - 2.0);
   exprmin::Golden g{f};
   EXPECT_NEAR(g.minimize(0.0, 5.0), 2.0, kTol);
   EXPECT_NEAR(g.get_optimal_value(), 0.0, kTol * kTol);
 }
 TEST(Golden, SineMinimum) {
-  auto y = diff::Variable<double, 'y'>{0.0};
+  auto y = diff::Variable<double, diff::FixedString{"y"}>{0.0};
   auto f = sin(y);
   exprmin::Golden g{f};
   g.ax = 3.0;
@@ -130,20 +130,20 @@ TEST(Golden, SineMinimum) {
   EXPECT_NEAR(g.get_optimal_value(), -1.0, kTol);
 }
 TEST(Golden, NegativeQuadratic) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto f = (x + 1.0) * (x + 1.0);
   exprmin::Golden g{f};
   EXPECT_NEAR(g.minimize(-3.0, 2.0), -1.0, kTol);
   EXPECT_NEAR(g.get_optimal_value(), 0.0, kTol * kTol);
 }
 TEST(Golden, CustomTolerance) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto f = (x - 7.5) * (x - 7.5);
   exprmin::Golden g{f, 1.0e-10};
   EXPECT_NEAR(g.minimize(5.0, 10.0), 7.5, 1e-7);
 }
 TEST(Golden, ManualBracketThenMinimize) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto f = (x - 4.0) * (x - 4.0);
   exprmin::Golden g{f};
   g.bracket(2.0, 3.0);
@@ -151,14 +151,14 @@ TEST(Golden, ManualBracketThenMinimize) {
 }
 
 TEST(Brent, QuadraticMinimum) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto f = (x - 2.0) * (x - 2.0);
   exprmin::Brent b{f};
   EXPECT_NEAR(b.minimize(0.0, 5.0), 2.0, kTol);
   EXPECT_NEAR(b.get_optimal_value(), 0.0, kTol * kTol);
 }
 TEST(Brent, SineMinimum) {
-  auto y = diff::Variable<double, 'y'>{0.0};
+  auto y = diff::Variable<double, diff::FixedString{"y"}>{0.0};
   auto f = sin(y);
   exprmin::Brent b{f};
   b.ax = 3.0;
@@ -171,7 +171,7 @@ TEST(Brent, SineMinimum) {
   EXPECT_NEAR(b.get_optimal_value(), -1.0, kTol);
 }
 TEST(Brent, QuarticMinimum) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto d = x - diff::Constant<double>{1.0};
   auto f = d * d * d * d;
   exprmin::Brent b{f};
@@ -180,14 +180,14 @@ TEST(Brent, QuarticMinimum) {
 }
 
 TEST(Dbrent, QuadraticMinimum) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto f = (x - 2.0) * (x - 2.0);
   exprmin::Dbrent db{f};
   EXPECT_NEAR(db.minimize(0.0, 5.0), 2.0, kTol);
   EXPECT_NEAR(db.get_optimal_value(), 0.0, kTol * kTol);
 }
 TEST(Dbrent, SineMinimum) {
-  auto y = diff::Variable<double, 'y'>{0.0};
+  auto y = diff::Variable<double, diff::FixedString{"y"}>{0.0};
   auto f = sin(y);
   exprmin::Dbrent db{f};
   db.ax = 3.0;
@@ -200,7 +200,7 @@ TEST(Dbrent, SineMinimum) {
   EXPECT_NEAR(db.get_optimal_value(), -1.0, kTol);
 }
 TEST(Dbrent, QuarticMinimum) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto d = x - diff::Constant<double>{1.0};
   auto f = d * d * d * d;
   exprmin::Dbrent db{f};
@@ -209,8 +209,8 @@ TEST(Dbrent, QuarticMinimum) {
 }
 
 TEST(LinMin, AxisDirection) {
-  auto x = diff::Variable<double, 'x'>{0.0};
-  auto y = diff::Variable<double, 'y'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
+  auto y = diff::Variable<double, diff::FixedString{"y"}>{0.0};
   auto f = (x - 3) * (x - 3) + (y - 4) * (y - 4);
   exprmin::LinMin lm{f};
   Eigen::Vector2d p{0.0, 0.0}, dir{1.0, 0.0};
@@ -220,8 +220,8 @@ TEST(LinMin, AxisDirection) {
   EXPECT_NEAR(lm.get_optimal_value(), 16.0, kTol);
 }
 TEST(LinMin, DiagonalDirection) {
-  auto x = diff::Variable<double, 'x'>{0.0};
-  auto y = diff::Variable<double, 'y'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
+  auto y = diff::Variable<double, diff::FixedString{"y"}>{0.0};
   auto f = (x - 3) * (x - 3) + (y - 4) * (y - 4);
   exprmin::LinMin lm{f};
   Eigen::Vector2d p{0.0, 0.0}, dir{1.0, 1.0};
@@ -231,8 +231,8 @@ TEST(LinMin, DiagonalDirection) {
   EXPECT_NEAR(lm.get_optimal_value(), 0.5, kTol);
 }
 TEST(LinMin, DirScaledByStep) {
-  auto x = diff::Variable<double, 'x'>{0.0};
-  auto y = diff::Variable<double, 'y'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
+  auto y = diff::Variable<double, diff::FixedString{"y"}>{0.0};
   auto f = (x - 3.0) * (x - 3.0) + (y - 4.0) * (y - 4.0);
   exprmin::LinMin lm{f};
   Eigen::Vector2d p{0.0, 0.0}, dir{1.0, 1.0};
@@ -402,8 +402,8 @@ TEST(SimAnneal, Bowl2D) {
   EXPECT_NEAR(sa.get_optimal_value(), 0.0, 1e-5);
 }
 TEST(SimAnneal, Rosenbrock) {
-  auto x = diff::Variable<double, 'x'>{0.0};
-  auto y = diff::Variable<double, 'y'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
+  auto y = diff::Variable<double, diff::FixedString{"y"}>{0.0};
   auto t1 = diff::Constant<double>{1.0} - x;
   auto t2 = y - x * x;
   auto f = t1 * t1 + diff::Constant<double>{100.0} * t2 * t2;
@@ -430,7 +430,7 @@ TEST(SimAnneal, BestPointTracked) {
 }
 
 TEST(GoldenTraits, SymbolAutoDeduced) {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto f = x * x;
   using Syms = diff::extract_symbols_from_expr_t<decltype(f)>;
   EXPECT_TRUE(boost::mp11::mp_size<Syms>::value == 1);
@@ -445,9 +445,9 @@ typename LMT::DataPoint make_pt(double x_val, double y_val, double w = 1.0) {
 }
 
 TEST(LevenbergMarquardt, LinearModel) {
-  auto a = diff::Variable<double, 'a'>{0.0};
-  auto b = diff::Variable<double, 'b'>{0.0};
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto a = diff::Variable<double, diff::FixedString{"a"}>{0.0};
+  auto b = diff::Variable<double, diff::FixedString{"b"}>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto model = a * x + b;
   auto lm = exprmin::make_lm<'x'>(model);
   std::vector<decltype(lm)::DataPoint> data;
@@ -458,9 +458,9 @@ TEST(LevenbergMarquardt, LinearModel) {
   EXPECT_NEAR(p[1], 3.0, 1e-6);
 }
 TEST(LevenbergMarquardt, ExponentialDecay) {
-  auto a = diff::Variable<double, 'a'>{0.0};
-  auto b = diff::Variable<double, 'b'>{0.0};
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto a = diff::Variable<double, diff::FixedString{"a"}>{0.0};
+  auto b = diff::Variable<double, diff::FixedString{"b"}>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto model = a * exp(-b * x);
   auto lm = exprmin::make_lm<'x'>(model);
   std::vector<decltype(lm)::DataPoint> data;
@@ -473,10 +473,10 @@ TEST(LevenbergMarquardt, ExponentialDecay) {
   EXPECT_NEAR(p[1], 0.5, 1e-5);
 }
 TEST(LevenbergMarquardt, Gaussian) {
-  auto a = diff::Variable<double, 'a'>{0.0};
-  auto b = diff::Variable<double, 'b'>{0.0};
-  auto c = diff::Variable<double, 'c'>{0.0};
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto a = diff::Variable<double, diff::FixedString{"a"}>{0.0};
+  auto b = diff::Variable<double, diff::FixedString{"b"}>{0.0};
+  auto c = diff::Variable<double, diff::FixedString{"c"}>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto two = diff::Constant<double>{2.0};
   auto model = a * exp(-(x - b) * (x - b) / (two * c * c));
   auto lm = exprmin::make_lm<'x'>(model);
@@ -492,7 +492,7 @@ TEST(LevenbergMarquardt, Gaussian) {
   EXPECT_NEAR(p[2], 1.0, 1e-4);
 }
 TEST(LevenbergMarquardt, NoInputVarSingleParam) {
-  auto a = diff::Variable<double, 'a'>{0.0};
+  auto a = diff::Variable<double, diff::FixedString{"a"}>{0.0};
   auto model = a + diff::Constant<double>{0.0};
   using LMT = exprmin::LevenbergMarquardt<decltype(model)>;
   LMT lm{model};
@@ -505,9 +505,9 @@ TEST(LevenbergMarquardt, NoInputVarSingleParam) {
 
 // ─── GaussNewton ────────────────────────────────────────────────
 TEST(GaussNewton, LinearModel) {
-  auto a = diff::Variable<double, 'a'>{0.0};
-  auto b = diff::Variable<double, 'b'>{0.0};
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto a = diff::Variable<double, diff::FixedString{"a"}>{0.0};
+  auto b = diff::Variable<double, diff::FixedString{"b"}>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto model = a * x + b;
   auto gn = exprmin::make_gn<'x'>(model);
   std::vector<decltype(gn)::DataPoint> data;
@@ -518,9 +518,9 @@ TEST(GaussNewton, LinearModel) {
   EXPECT_NEAR(p[1], 3.0, 1e-6);
 }
 TEST(GaussNewton, ExponentialDecay) {
-  auto a = diff::Variable<double, 'a'>{0.0};
-  auto b = diff::Variable<double, 'b'>{0.0};
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto a = diff::Variable<double, diff::FixedString{"a"}>{0.0};
+  auto b = diff::Variable<double, diff::FixedString{"b"}>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   auto model = a * exp(-b * x);
   auto gn = exprmin::make_gn<'x'>(model);
   std::vector<decltype(gn)::DataPoint> data;
@@ -533,7 +533,7 @@ TEST(GaussNewton, ExponentialDecay) {
   EXPECT_NEAR(p[1], 0.5, 1e-5);
 }
 TEST(GaussNewton, NoInputVarSingleParam) {
-  auto a = diff::Variable<double, 'a'>{0.0};
+  auto a = diff::Variable<double, diff::FixedString{"a"}>{0.0};
   auto model = a + diff::Constant<double>{0.0};
   using GNT = exprmin::GaussNewton<decltype(model)>;
   GNT gn{model};
@@ -546,8 +546,8 @@ TEST(GaussNewton, NoInputVarSingleParam) {
 
 // ─── AugLag ─────────────────────────────────────────────────────
 TEST(AugLag, EqualityConstrained) {
-  auto x = diff::Variable<double, 'x'>{0.0};
-  auto y = diff::Variable<double, 'y'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
+  auto y = diff::Variable<double, diff::FixedString{"y"}>{0.0};
   auto f = x * x + y * y;
   auto h = x + y - 1.0;
   exprmin::AugLag al{f, exprmin::make_eq(h), std::tuple{}};
@@ -557,8 +557,8 @@ TEST(AugLag, EqualityConstrained) {
   EXPECT_NEAR(al.get_optimal_value(), 0.5, 1e-4);
 }
 TEST(AugLag, InequalityConstrained) {
-  auto x = diff::Variable<double, 'x'>{0.0};
-  auto y = diff::Variable<double, 'y'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
+  auto y = diff::Variable<double, diff::FixedString{"y"}>{0.0};
   auto f = (x - 3.0) * (x - 3.0) + (y - 3.0) * (y - 3.0);
   auto g = x + y - diff::Constant<double>{4.0};
   exprmin::AugLag al{f, std::tuple{}, exprmin::make_ineq(g)};
@@ -568,8 +568,8 @@ TEST(AugLag, InequalityConstrained) {
   EXPECT_NEAR(al.get_optimal_value(), 2.0, 1e-3);
 }
 TEST(AugLag, BothConstraints) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto f = x * x + y * y;
   diff::Equation h = x - y;
   diff::Equation g = 1.0 - x - y;
@@ -584,8 +584,8 @@ TEST(AugLag, BothConstraints) {
 // Roth (testfuncs.c): r1=-13+u+((5-v)v-2)v, r2=-29+u+((v+1)v-14)v
 // init {4.5, 3.5}, min at {5, 4}, f=0
 TEST(NLSDogleg, Roth_Standard) {
-  auto u = PV(0.0, 'u');
-  auto v = PV(0.0, 'v');
+  auto u = PV(0.0, "u");
+  auto v = PV(0.0, "v");
   auto r1 = -13.0 + u + ((5.0 - v) * v - 2.0) * v;
   auto r2 = -29.0 + u + ((v + 1.0) * v - 14.0) * v;
   auto nd = exprmin::make_nls_dogleg(r1, r2);
@@ -595,8 +595,8 @@ TEST(NLSDogleg, Roth_Standard) {
   EXPECT_NEAR(nd.get_optimal_value(), 0.0, 1e-5);
 }
 TEST(NLSDogleg, Roth_Double) {
-  auto u = PV(0.0, 'u');
-  auto v = PV(0.0, 'v');
+  auto u = PV(0.0, "u");
+  auto v = PV(0.0, "v");
   auto r1 = -13.0 + u + ((5.0 - v) * v - 2.0) * v;
   auto r2 = -29.0 + u + ((v + 1.0) * v - 14.0) * v;
   auto nd = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2);
@@ -609,8 +609,8 @@ TEST(NLSDogleg, Roth_Double) {
 // Rosenbrock as NLS residuals: r1=10*(y-x²), r2=1-x
 // init {-1.2, 1.0}, min at {1, 1}, f=0
 TEST(NLSDogleg, RosenbrockNLS_Standard) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto r1 = 10.0 * (y - x * x);
   auto r2 = 1.0 - x;
   auto nd = exprmin::make_nls_dogleg(r1, r2);
@@ -620,8 +620,8 @@ TEST(NLSDogleg, RosenbrockNLS_Standard) {
   EXPECT_NEAR(nd.get_optimal_value(), 0.0, 1e-6);
 }
 TEST(NLSDogleg, RosenbrockNLS_Double) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto r1 = 10.0 * (y - x * x);
   auto r2 = 1.0 - x;
   auto nd = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2);
@@ -635,8 +635,8 @@ TEST(NLSDogleg, RosenbrockNLS_Double) {
 // Same optimal point as the tutorial's min sqrt(y) (sqrt is monotone).
 // init {0.5, 1.0}, optimal: x=1/3, y=8/27≈0.2963
 TEST(AugLag, NLoptTutorial) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto f = y + diff::Constant<double>{0.0} * x;
   auto two_x = 2.0 * x;
   auto g1 = two_x * two_x * two_x - y;
@@ -653,8 +653,8 @@ TEST(AugLag, NLoptTutorial) {
 
 // Linear system: x + y - 3 = 0, x - y - 1 = 0  →  x=2, y=1
 TEST(Broyden, Linear2D) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   exprmin::Broyden br{diff::Equation{x + y - 3.0, x - y - 1.0}};
   auto p = br.find_root({0.0, 0.0});
   EXPECT_NEAR(p[0], 2.0, kTol);
@@ -664,8 +664,8 @@ TEST(Broyden, Linear2D) {
 
 // Nonlinear system: x²+y²-4=0, x-y=0  →  x=√2, y=√2
 TEST(Broyden, Nonlinear2D) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto f1 = x * x + y * y - 4.0;
   auto f2 = x - y;
   exprmin::Broyden br{diff::Equation{f1, f2}};
@@ -677,9 +677,9 @@ TEST(Broyden, Nonlinear2D) {
 
 // 3D nonlinear system: x²-y=0, y²-z=0, z²-x=0  →  {1,1,1}
 TEST(Broyden, Nonlinear3D) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
-  auto z = PV(0.0, 'z');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
+  auto z = PV(0.0, "z");
   auto f1 = x * x - y;
   auto f2 = y * y - z;
   auto f3 = z * z - x;
@@ -696,8 +696,8 @@ TEST(Broyden, Nonlinear3D) {
 // Square 2D NLS: r1=x²+y-3, r2=x+y²-3  →  multiple roots; check any is found
 // (residual→0)
 TEST(NLSDogleg, Square2D_Standard) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto r1 = x * x + y - 3.0;
   auto r2 = x + y * y - 3.0;
   auto nd = exprmin::make_nls_dogleg(r1, r2);
@@ -706,8 +706,8 @@ TEST(NLSDogleg, Square2D_Standard) {
 }
 
 TEST(NLSDogleg, Square2D_Double) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto r1 = x * x + y - 3.0;
   auto r2 = x + y * y - 3.0;
   auto nd = exprmin::make_nls_dogleg<exprmin::DoglegVariant::Double>(r1, r2);
@@ -717,8 +717,8 @@ TEST(NLSDogleg, Square2D_Double) {
 
 // Overdetermined 3-residual: r1=x+y-2, r2=x-y, r3=x-1  →  LS sol {1,1}
 TEST(NLSDogleg, Overdetermined3r_Standard) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto r1 = x + y - 2.0;
   auto r2 = x - y;
   auto r3 = x - 1.0;
@@ -729,8 +729,8 @@ TEST(NLSDogleg, Overdetermined3r_Standard) {
 }
 
 TEST(NLSDogleg, Overdetermined3r_Double) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto r1 = x + y - 2.0;
   auto r2 = x - y;
   auto r3 = x - 1.0;
@@ -745,8 +745,8 @@ TEST(NLSDogleg, Overdetermined3r_Double) {
 
 // Same multi-root system: just verify a root is found (residual→0)
 TEST(Subspace2D, Square2D) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto r1 = x * x + y - 3.0;
   auto r2 = x + y * y - 3.0;
   auto s2 = exprmin::make_subspace2d(r1, r2);
@@ -755,8 +755,8 @@ TEST(Subspace2D, Square2D) {
 }
 
 TEST(Subspace2D, Overdetermined3r) {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto r1 = x + y - 2.0;
   auto r2 = x - y;
   auto r3 = x - 1.0;
@@ -833,8 +833,8 @@ TEST(SimplexLP, Unbounded) {
 // Roth: f = (-13+u+((5-v)v-2)v)² + (-29+u+((v+1)v-14)v)²
 // init (4.5, 3.5), min at (5, 4), f=0
 inline auto make_roth() {
-  auto u = PV(0.0, 'u');
-  auto v = PV(0.0, 'v');
+  auto u = PV(0.0, "u");
+  auto v = PV(0.0, "v");
   auto a = -13.0 + u + ((5.0 - v) * v - 2.0) * v;
   auto b = -29.0 + u + ((v + 1.0) * v - 14.0) * v;
   return a * a + b * b;
@@ -843,10 +843,10 @@ inline auto make_roth() {
 // Wood: 100(a²-b)²+(1-a)²+90(c²-d)²+(1-c)²+10.1((1-b)²+(1-d)²)+19.8(1-b)(1-d)
 // init (-3,-1,-3,-1), min at (1,1,1,1), f=0
 inline auto make_wood() {
-  auto a = PV(0.0, 'a');
-  auto b = PV(0.0, 'b');
-  auto c = PV(0.0, 'c');
-  auto d = PV(0.0, 'd');
+  auto a = PV(0.0, "a");
+  auto b = PV(0.0, "b");
+  auto c = PV(0.0, "c");
+  auto d = PV(0.0, "d");
   auto t1 = a * a - b;
   auto t2 = c * c - d;
   return 100.0 * t1 * t1 + (1.0 - a) * (1.0 - a)
@@ -858,8 +858,8 @@ inline auto make_wood() {
 // GSL Rosenbrock variant: (u-1)²+10(u²-v)²  (coefficient 10, not 100)
 // init (-1.2, 1.0), min at (1, 1), f=0
 inline auto make_gsl_rosenbrock() {
-  auto u = PV(0.0, 'u');
-  auto v = PV(0.0, 'v');
+  auto u = PV(0.0, "u");
+  auto v = PV(0.0, "v");
   auto da = u - 1.0;
   auto db = u * u - v;
   return da * da + 10.0 * db * db;
@@ -867,8 +867,8 @@ inline auto make_gsl_rosenbrock() {
 
 // SimpleAbs: |u-1|+|v-2|, non-smooth, min at (1,2), f=0
 inline auto make_simpleabs() {
-  auto u = PV(0.0, 'u');
-  auto v = PV(0.0, 'v');
+  auto u = PV(0.0, "u");
+  auto v = PV(0.0, "v");
   return abs(u - 1.0) + abs(v - 2.0);
 }
 
@@ -1005,16 +1005,16 @@ TEST(SimpleAbs, AmoebaRand) {
 // Himmelblau: (x²+y-11)²+(x+y²-7)²  four equal global minima f=0
 // start (2,1) sits in basin of (3,2); test only fopt since all minima give f=0
 inline auto make_himmelblau() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   return (x * x + y - 11.0) * (x * x + y - 11.0) +
          (x + y * y - 7.0) * (x + y * y - 7.0);
 }
 
 // Beale: (1.5-x+xy)²+(2.25-x+xy²)²+(2.625-x+xy³)²  min f=0 at (3, 0.5)
 inline auto make_beale() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   return (1.5 - x + x * y) * (1.5 - x + x * y) +
          (2.25 - x + x * y * y) * (2.25 - x + x * y * y) +
          (2.625 - x + x * y * y * y) * (2.625 - x + x * y * y * y);
@@ -1022,32 +1022,32 @@ inline auto make_beale() {
 
 // Booth: (x+2y-7)²+(2x+y-5)²  min f=0 at (1, 3)
 inline auto make_booth() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   return (x + 2.0 * y - 7.0) * (x + 2.0 * y - 7.0) +
          (2.0 * x + y - 5.0) * (2.0 * x + y - 5.0);
 }
 
 // Matyas: 0.26(x²+y²)-0.48xy  min f=0 at (0, 0)
 inline auto make_matyas() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   return 0.26 * (x * x + y * y) - 0.48 * x * y;
 }
 
 // Six-hump camelback: two global minima f≈-1.0316 at ±(0.0898,-0.7126)
 // start (-0.5, 0.5); test fopt only since both minima are valid
 inline auto make_sixhump() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   return (4.0 - 2.1 * x * x + x * x * x * x / 3.0) * x * x + x * y +
          (-4.0 + 4.0 * y * y) * y * y;
 }
 
 // Goldstein-Price: min f=3 at (0, -1); four local minima
 inline auto make_goldstein_price() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   auto A = 1.0 + (x + y + 1.0) * (x + y + 1.0) *
                      (19.0 - 14.0 * x + 3.0 * x * x - 14.0 * y +
                       6.0 * x * y + 3.0 * y * y);
@@ -1060,8 +1060,8 @@ inline auto make_goldstein_price() {
 // Rastrigin: 20+x²-10cos(2πx)+y²-10cos(2πy)  min f=0 at (0,0); many local minima
 // start (0.1, 0.1) is inside the basin of (0,0)
 inline auto make_rastrigin() {
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
   constexpr double pi = std::numbers::pi;
   return 20.0 + x * x - 10.0 * cos(2.0 * pi * x) +
          y * y - 10.0 * cos(2.0 * pi * y);
@@ -1335,13 +1335,13 @@ TEST(InteriorPointLP, TwoConstraints) {
 // --- Expression evaluation at known points ---
 
 consteval double ce_bowl2d_at_min() {
-  auto x = PV(1.0, 'x');
-  auto y = PV(2.0, 'y');
+  auto x = PV(1.0, "x");
+  auto y = PV(2.0, "y");
   return ((x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0)).eval();
 }
 consteval double ce_rosenbrock_at_min() {
-  auto x = PV(1.0, 'x');
-  auto y = PV(1.0, 'y');
+  auto x = PV(1.0, "x");
+  auto y = PV(1.0, "y");
   return ((1.0 - x) * (1.0 - x) + 100.0 * (y - x * x) * (y - x * x)).eval();
 }
 static_assert(ce_bowl2d_at_min() == 0.0);
@@ -1350,8 +1350,8 @@ static_assert(ce_rosenbrock_at_min() == 0.0);
 // --- Reverse-mode gradient at the minimum (should be zero) ---
 
 consteval std::array<double, 2> ce_bowl2d_grad_at_min() {
-  auto x = PV(1.0, 'x');
-  auto y = PV(2.0, 'y');
+  auto x = PV(1.0, "x");
+  auto y = PV(2.0, "y");
   auto f = (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
   return diff::gradient<diff::DiffMode::Reverse>(f);
 }
@@ -1361,22 +1361,22 @@ static_assert(ce_bowl2d_grad_at_min()[1] == 0.0);
 // --- 1-D minimisation at compile time ---
 
 consteval double ce_brent_quadratic() {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   exprmin::Brent b{(x - 2.0) * (x - 2.0)};
   return b.minimize(0.0, 5.0);
 }
 consteval double ce_golden_quadratic() {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   exprmin::Golden g{(x - 2.0) * (x - 2.0)};
   return g.minimize(0.0, 5.0);
 }
 consteval double ce_dbrent_quadratic() {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   exprmin::Dbrent db{(x - 2.0) * (x - 2.0)};
   return db.minimize(0.0, 5.0);
 }
 consteval bool ce_bracket_quadratic() {
-  auto x = diff::Variable<double, 'x'>{0.0};
+  auto x = diff::Variable<double, diff::FixedString{"x"}>{0.0};
   exprmin::Bracketmethod bm{(x - 3.0) * (x - 3.0)};
   bm.bracket(0.0, 1.0);
   return (bm.ax <= 3.0 && 3.0 <= bm.cx) || (bm.cx <= 3.0 && 3.0 <= bm.ax);

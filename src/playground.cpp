@@ -64,8 +64,8 @@ int main() {
   constexpr int nx = 250, ny = 250;
   std::mt19937 rng(std::random_device{}());
 
-  auto x = PV(0.0, 'x');
-  auto y = PV(0.0, 'y');
+  auto x = PV(0.0, "x");
+  auto y = PV(0.0, "y");
 
   // run_func: evaluate grid, run all algos from p0, write JSON, call Python.
   auto run_func = [&](const std::string &title, auto f, auto Xlimit,
