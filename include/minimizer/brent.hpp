@@ -7,6 +7,83 @@
 namespace exprmin {
 
 /**
+ * @brief The ranked trio shared by Brent (§10.3) and Dbrent (§10.4).
+ *
+ * Holds the three best abscissae seen so far — x (best), w (2nd), v (3rd),
+ * ranked fx ≤ fw ≤ fv — that feed the parabolic / secant interpolation.  When
+ * @p WithDeriv is true each slot also carries its first derivative (dx/dw/dv),
+ * preserved through demotion so Dbrent's secant step needs no extra f' calls.
+ *
+ * A fixed-size, allocation-free, constexpr replacement for the hand-rolled
+ * housekeeping: a sorted container cannot serve here because the bracket [a,b]
+ * is ordered by position while the trio is ordered by value, the demotion is
+ * bracket/recency-aware rather than a pure k-smallest queue, and node-based
+ * containers are not usable in the library's constexpr paths.
+ *
+ * @tparam T          Numeric scalar type.
+ * @tparam WithDeriv  Whether to track per-slot derivatives (Dbrent).
+ */
+template <diff::Numeric T, bool WithDeriv = false> struct BrentState {
+  T x{}, fx{}; ///< best
+  T w{}, fw{}; ///< 2nd best
+  T v{}, fv{}; ///< 3rd best
+  T dx{}, dw{}, dv{}; ///< per-slot derivatives — used only when WithDeriv
+
+  /**
+   * @brief Tighten the bracket [a,b] around new point u and re-rank the trio.
+   *
+   * Part 1 — tighten [a, b]: u proves the minimum cannot be on one side of x,
+   * so move whichever bound is on that side inward.
+   *   fu ≤ fx  →  x becomes interior; the side opposite u is discarded.
+   *   fu > fx  →  u itself becomes the new bound on its side.
+   * Part 2 — slot u into the value ranking so the next iteration has fresh
+   * curvature: demote the chain v ← w ← x ← u, or insert at w / v, or discard.
+   *
+   * @param du  Derivative at u; ignored unless WithDeriv.
+   */
+  constexpr void update(T &a, T &b, T u, T fu, T du = T{}) {
+    if (fu <= fx) {
+      (u < x ? b : a) = x;
+      v = w;
+      fv = fw;
+      if constexpr (WithDeriv) {
+        dv = dw;
+      }
+      w = x;
+      fw = fx;
+      if constexpr (WithDeriv) {
+        dw = dx;
+      }
+      x = u;
+      fx = fu;
+      if constexpr (WithDeriv) {
+        dx = du;
+      }
+    } else {
+      (u < x ? a : b) = u;
+      if (fu <= fw || w == x) {
+        v = w;
+        fv = fw;
+        if constexpr (WithDeriv) {
+          dv = dw;
+        }
+        w = u;
+        fw = fu;
+        if constexpr (WithDeriv) {
+          dw = du;
+        }
+      } else if (fu <= fv || v == x || v == w) {
+        v = u;
+        fv = fu;
+        if constexpr (WithDeriv) {
+          dv = du;
+        }
+      }
+    }
+  }
+};
+
+/**
  * @brief NR §10.3 — Brent's method for derivative-free 1-D minimization.
  *
  * Combines golden-section search with parabolic interpolation inside a
@@ -33,13 +110,16 @@ struct BrentFn {
     using std::min;
     constexpr T CGOLD = static_cast<T>(1.0 - 1.0 / std::numbers::phi_v<double>);
 
-    // Three points x (best), w (2nd), v (3rd) are kept ranked as fx≤fw≤fv.
-    // The parabolic interpolation below fits a curve through all three, so the
-    // housekeeping at the end of each iteration must update them every step.
+    // Three points x (best), w (2nd), v (3rd) are kept ranked as fx≤fw≤fv in a
+    // BrentState. The parabolic interpolation below fits a curve through all
+    // three; st.update() re-ranks them at the end of each iteration. References
+    // alias the trio so the algorithm body reads unchanged.
     T a = min(ax, cx); // sort so a ≤ b regardless of the input order
     T b = max(ax, cx);
-    T x = bx, w = bx, v = bx;
-    T fx = f(x), fw = fx, fv = fx;
+    const T f0 = f(bx);
+    BrentState<T> st{.x = bx, .fx = f0, .w = bx, .fw = f0, .v = bx, .fv = f0};
+    T &x = st.x, &w = st.w, &v = st.v;
+    T &fx = st.fx, &fw = st.fw, &fv = st.fv;
     T d{}, e{};
 
     auto golden_section_step = [&CGOLD](auto &e, auto &d, const auto &a,
@@ -95,45 +175,8 @@ struct BrentFn {
                : x + (d >= T{} ? tol1 : -tol1));
       const T fu = f(u);
 
-      // --- housekeeping: tighten the bracket and maintain the ranked trio ---
-      // Part 1 — tighten [a, b]: u proves the minimum cannot be on one side of
-      // x, so we move whichever bound is on that side inward.
-      //   fu ≤ fx  →  x is now interior; the side opposite u can be discarded.
-      //   fu > fx  →  u itself becomes the new bound on its side.
-      //
-      // Part 2 — slot u into the ranking so next iteration has fresh curvature:
-      //   fu ≤ fx  →  u beats everything; demote the chain v ← w ← x ← u.
-      //   fu ≤ fw  →  u is second-best; shift old w down to v, u takes w.
-      //   fu ≤ fv  →  u is third-best; replace v.
-      //   fu > fv  →  u is worse than all three; discard it (no update needed).
-      if (fu <= fx) {
-        if (u < x) {
-          b = x;
-        } else {
-          a = x;
-        }
-        v = w;
-        fv = fw;
-        w = x;
-        fw = fx;
-        x = u;
-        fx = fu;
-      } else {
-        if (u < x) {
-          a = u;
-        } else {
-          b = u;
-        }
-        if (fu <= fw || w == x) {
-          v = w;
-          fv = fw;
-          w = u;
-          fw = fu;
-        } else if (fu <= fv || v == x || v == w) {
-          v = u;
-          fv = fu;
-        }
-      }
+      // tighten the bracket and maintain the ranked trio
+      st.update(a, b, u, fu);
     }
     return x;
   }
@@ -174,10 +217,16 @@ struct DbrentFn {
     // Same three-point ranked trio as brent (x best, w 2nd, v 3rd, fx≤fw≤fv),
     // but each point also carries its derivative (dx, dw, dv) so the secant
     // step can be computed without extra f' calls during housekeeping.
+    // References alias the trio so the algorithm body reads unchanged.
     T a = min(ax, cx), b = max(ax, cx);
-    T x = bx, w = bx, v = bx;
-    T fx = f(bx), fw = fx, fv = fx;
-    T dx = f.df(bx), dw = dx, dv = dx;
+    const T f0 = f(bx);
+    const T d0 = f.df(bx);
+    BrentState<T, true> st{.x = bx, .fx = f0, .w = bx, .fw = f0,
+                           .v = bx, .fv = f0, .dx = d0, .dw = d0, .dv = d0};
+    // Dbrent's body navigates by position and derivative; the trio's f-values
+    // are consumed only inside st.update(), so no f-value aliases are needed.
+    T &x = st.x, &w = st.w, &v = st.v;
+    T &dx = st.dx, &dw = st.dw, &dv = st.dv;
     T d{}, e{};
 
     for (int i = 0; i < itmax; ++i) {
@@ -244,36 +293,8 @@ struct DbrentFn {
       const T fu = f(u);
       const T du = f.df(u);
 
-      // --- housekeeping: identical bracket/ranking logic to brent, but each
-      // slot in the trio also carries a derivative that must move with it.
-      // The derivative at the demoted point is preserved because the secant
-      // step next iteration needs dx at w and v, not just their positions.
-      if (fu <= fx) {
-        (u < x ? b : a) = x;
-        v = w;
-        fv = fw;
-        dv = dw;
-        w = x;
-        fw = fx;
-        dw = dx;
-        x = u;
-        fx = fu;
-        dx = du;
-      } else {
-        (u < x ? a : b) = u;
-        if (fu <= fw || w == x) {
-          v = w;
-          fv = fw;
-          dv = dw;
-          w = u;
-          fw = fu;
-          dw = du;
-        } else if (fu <= fv || v == x || v == w) {
-          v = u;
-          fv = fu;
-          dv = du;
-        }
-      }
+      // tighten the bracket and maintain the ranked trio (with derivatives)
+      st.update(a, b, u, fu, du);
     }
     return x;
   }
